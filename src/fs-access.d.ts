@@ -15,6 +15,7 @@ interface FileSystemDirectoryHandle {
 interface FileSystemFileHandle {
   getFile(): Promise<File>;
   createWritable(): Promise<FileSystemWritableFileStream>;
+  move(destinationDir: FileSystemDirectoryHandle, newName?: string): Promise<void>;
 }
 
 interface FileSystemWritableFileStream extends WritableStream {
@@ -32,12 +33,15 @@ interface DirectoryPickerOptions {
   startIn?: WellKnownDirectory | FileSystemHandle;
 }
 
+interface OpenFilePickerOptions {
+  multiple?: boolean;
+  types?: { description: string; accept: Record<string, string[]> }[];
+  mode?: 'read' | 'readwrite';
+}
+
 interface Window {
   showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
-  showOpenFilePicker(options?: {
-    multiple?: boolean;
-    types?: { description: string; accept: Record<string, string[]> }[];
-  }): Promise<FileSystemFileHandle[]>;
+  showOpenFilePicker(options?: OpenFilePickerOptions): Promise<FileSystemFileHandle[]>;
 }
 
 type PermissionState = 'granted' | 'denied' | 'prompt';

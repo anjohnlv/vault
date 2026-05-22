@@ -1,12 +1,14 @@
 /**
  * 密码本页面组件
- * 用于 PreviewModal，展示和管理密码条目（增删改、模糊搜索）
+ * 用于 PreviewModal，展示和管理密码条目（支持自动保存、模糊搜索、原地编辑）
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { Input as AntInput, Button } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import { LockOutlined } from '@ant-design/icons';
 import type { PasswordEntry } from '../../types';
-import { PasswordEntryForm } from './PasswordEntryForm';
-import { Button } from '../ui/Button';
-import { useToast } from '../ui/Toast';
+import { PasswordEntryCard } from './PasswordEntryCard';
+import { generateUUID } from '../../utils/format';
 
 interface Props {
   entries: PasswordEntry[];
@@ -16,11 +18,33 @@ interface Props {
 export function PasswordBook({ entries: initialEntries, onSave }: Props) {
   const [entries, setEntries] = useState<PasswordEntry[]>(initialEntries);
   const [search, setSearch] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
+  const [newEntryId, setNewEntryId] = useState<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+
+  const debouncedSave = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      onSaveRef.current(entriesRef.current);
+    }, 500);
+  }, []);
+
+  // 组件卸载前执行最后一次保存
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        if (entriesRef.current.length > 0) {
+          onSaveRef.current(entriesRef.current);
+        }
+      }
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return entries;
@@ -33,161 +57,89 @@ export function PasswordBook({ entries: initialEntries, onSave }: Props) {
     );
   }, [entries, search]);
 
-  const togglePassword = (id: string) => {
-    setVisiblePasswords((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  const handleAdd = () => {
+    const id = generateUUID();
+    setNewEntryId(id);
+    setEntries((prev) => [
+      {
+        id,
+        name: '',
+        username: '',
+        password: '',
+        notes: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      ...prev,
+    ]);
+  };
+
+  const handleSaveEntry = (entry: PasswordEntry) => {
+    setEntries((prev) => {
+      const idx = prev.findIndex((e) => e.id === entry.id);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = entry;
       return next;
     });
+    if (entry.id === newEntryId) {
+      setNewEntryId(null);
+    }
+    debouncedSave();
   };
 
-  const handleCopy = useCallback(
-    async (text: string, label: string) => {
-      try {
-        await navigator.clipboard.writeText(text);
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-      toast(`${label}已复制`, 'success');
-    },
-    [toast],
-  );
-
-  const handleSaveEntry = useCallback(
-    (entry: PasswordEntry) => {
-      const updated = editingId
-        ? entries.map((e) => (e.id === editingId ? entry : e))
-        : [...entries, entry];
-      setEntries(updated);
-      setEditingId(null);
-      setAdding(false);
-    },
-    [entries, editingId],
-  );
-
-  const handleDelete = useCallback(
-    (id: string) => {
-      if (!confirm('确定要删除此条目吗？')) return;
-      setEntries((prev) => prev.filter((e) => e.id !== id));
-    },
-    [],
-  );
-
-  const handlePersist = async () => {
-    setSaving(true);
-    await onSave(entries);
-    setSaving(false);
-    toast('密码本已保存', 'success');
+  const handleCancelNew = () => {
+    if (!newEntryId) return;
+    setEntries((prev) => prev.filter((e) => e.id !== newEntryId));
+    setNewEntryId(null);
   };
 
-  if (adding) {
-    return (
-      <div className="password-book">
-        <h3 className="password-book__heading">添加密码条目</h3>
-        <PasswordEntryForm
-          entry={null}
-          onSave={handleSaveEntry}
-          onCancel={() => setAdding(false)}
-        />
-      </div>
-    );
-  }
-
-  if (editingId) {
-    const entry = entries.find((e) => e.id === editingId);
-    return (
-      <div className="password-book">
-        <h3 className="password-book__heading">编辑密码条目</h3>
-        <PasswordEntryForm
-          entry={entry ?? null}
-          onSave={handleSaveEntry}
-          onCancel={() => setEditingId(null)}
-        />
-      </div>
-    );
-  }
+  const handleDelete = (id: string) => {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    const next = entries.filter((e) => e.id !== id);
+    onSaveRef.current(next);
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+  };
 
   return (
     <div className="password-book">
       <div className="password-book__header">
-        <input
-          className="search-bar__input"
-          type="text"
-          placeholder="搜索条目..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <Button size="sm" onClick={() => setAdding(true)}>
-          + 添加
-        </Button>
-        <Button size="sm" variant="outline" onClick={handlePersist} loading={saving}>
-          保存
-        </Button>
+        <div className="password-book__badge">
+          <LockOutlined /> AES-256-GCM 端到端加密
+        </div>
+        <div className="password-book__header-right">
+          <AntInput.Search
+            className="password-book__search"
+            placeholder="搜索条目..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+          />
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            添加
+          </Button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
         <p className="password-book__empty">
-          {search ? '无匹配条目' : '密码本为空，点击"添加"创建第一条'}
+          {search
+            ? '无匹配条目'
+            : '密码本为空，点击「添加」创建第一条密码'}
         </p>
       ) : (
         <div className="password-book__list">
           {filtered.map((e) => (
-            <div key={e.id} className="pw-entry">
-              <div className="pw-entry__info">
-                <span className="pw-entry__name">{e.name}</span>
-                {e.notes && (
-                  <span className="pw-entry__notes">{e.notes}</span>
-                )}
-              </div>
-              <div className="pw-entry__fields">
-                <button
-                  className="pw-entry__field"
-                  onClick={() => handleCopy(e.username, '用户名')}
-                  title="点击复制用户名"
-                >
-                  👤 {e.username || '(无)'}
-                </button>
-                <button
-                  className="pw-entry__field pw-entry__field--password"
-                  onClick={() => handleCopy(e.password, '密码')}
-                  title="点击复制密码"
-                >
-                  🔑{' '}
-                  {visiblePasswords.has(e.id) ? e.password : '••••••'}
-                </button>
-                <button
-                  className="pw-entry__toggle"
-                  onClick={() => togglePassword(e.id)}
-                  title={visiblePasswords.has(e.id) ? '隐藏密码' : '显示密码'}
-                >
-                  {visiblePasswords.has(e.id) ? '🙈' : '👁'}
-                </button>
-              </div>
-              <div className="pw-entry__actions">
-                <button
-                  className="file-item__btn"
-                  title="编辑"
-                  onClick={() => setEditingId(e.id)}
-                >
-                  ✏️
-                </button>
-                <button
-                  className="file-item__btn"
-                  title="删除"
-                  onClick={() => handleDelete(e.id)}
-                >
-                  🗑
-                </button>
-              </div>
-            </div>
+            <PasswordEntryCard
+              key={e.id}
+              entry={e}
+              onSave={handleSaveEntry}
+              onDelete={handleDelete}
+              initialEditing={e.id === newEntryId}
+              onCancelNew={handleCancelNew}
+            />
           ))}
         </div>
       )}

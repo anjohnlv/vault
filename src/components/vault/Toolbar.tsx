@@ -1,27 +1,27 @@
 /**
  * 操作工具栏组件
- * 用于 VaultScreen，提供导入文件、新建文件/笔记/密码本、进入批量模式等操作
+ * 用于 VaultScreen，提供导入文件、新建文件/笔记/密码本、搜索当前文件夹文件等操作
  */
-import { useRef, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useVault } from '../../context/VaultContext';
+import { Tooltip } from 'antd';
 import {
   UploadOutlined,
   FileTextOutlined,
   KeyOutlined,
   SearchOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import { findNode } from '../../utils/tree';
 import type { FolderNode } from '../../types';
 
 interface ToolbarProps {
-  onAddFile: (file: File) => void;
-  fileSearchQuery: string;
-  onFileSearchChange: (query: string) => void;
+  onAddFile: (handle: FileSystemFileHandle) => void;
 }
 
-export function Toolbar({ onAddFile, fileSearchQuery, onFileSearchChange }: ToolbarProps) {
-  const { state, createNote, createPasswordBook } = useVault();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export function Toolbar({ onAddFile }: ToolbarProps) {
+  const { state, setFileFilter, createNote, createPasswordBook } = useVault();
+  const [creatingBook, setCreatingBook] = useState(false);
 
   const encrypted = useMemo(() => {
     const node = state.currentFolderId ? findNode(state.tree, state.currentFolderId) : null;
@@ -37,24 +37,30 @@ export function Toolbar({ onAddFile, fileSearchQuery, onFileSearchChange }: Tool
     return state.vaultFolder?.name ?? '';
   }, [state.currentFolderId, state.rootId, state.tree, state.vaultFolder]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      for (const f of Array.from(files)) {
-        onAddFile(f);
+  const handleUpload = async () => {
+    try {
+      const handles = await window.showOpenFilePicker({ multiple: true, mode: 'readwrite' });
+      for (const h of handles) {
+        onAddFile(h);
       }
+    } catch {
     }
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleCreateNote = async () => {
-    await createNote('未命名笔记', state.currentFolderId);
+    try {
+      await createNote('未命名笔记', state.currentFolderId);
+    } catch {
+    }
   };
 
   const handleCreatePasswordBook = async () => {
+    setCreatingBook(true);
     try {
       await createPasswordBook('未命名密码本', state.currentFolderId);
     } catch {
+    } finally {
+      setCreatingBook(false);
     }
   };
 
@@ -74,42 +80,38 @@ export function Toolbar({ onAddFile, fileSearchQuery, onFileSearchChange }: Tool
             className="toolbar__search-input"
             type="text"
             placeholder="搜索文件..."
-            value={fileSearchQuery}
-            onChange={(e) => onFileSearchChange(e.target.value)}
+            value={state.fileFilter}
+            onChange={(e) => setFileFilter(e.target.value)}
           />
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
-        <button
-          className="toolbar__btn"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={state.isLoading}
-          title="上传文件"
-        >
-          <UploadOutlined />
-        </button>
-        <button
-          className="toolbar__btn"
-          onClick={handleCreateNote}
-          disabled={state.isLoading}
-          title="新建笔记"
-        >
-          <FileTextOutlined />
-        </button>
-        <button
-          className="toolbar__btn"
-          onClick={handleCreatePasswordBook}
-          disabled={state.isLoading}
-          title="新建密码本"
-        >
-          <KeyOutlined />
-        </button>
+        <Tooltip title="上传文件">
+          <button
+            className="toolbar__btn"
+            onClick={handleUpload}
+            disabled={state.isLoading}
+          >
+            <UploadOutlined />
+          </button>
+        </Tooltip>
+        <Tooltip title="新建笔记">
+          <button
+            className="toolbar__btn"
+            onClick={handleCreateNote}
+            disabled={state.isLoading}
+          >
+            <FileTextOutlined />
+          </button>
+        </Tooltip>
+        <Tooltip title={creatingBook ? '创建中...' : '新建密码本'}>
+          <button
+            className="toolbar__btn toolbar__btn--loading"
+            onClick={handleCreatePasswordBook}
+            disabled={state.isLoading || creatingBook}
+          >
+            {creatingBook ? <LoadingOutlined spin /> : <KeyOutlined />}
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

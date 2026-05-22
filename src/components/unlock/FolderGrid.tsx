@@ -4,7 +4,7 @@
  */
 import { Dropdown, App } from 'antd';
 import type { MenuProps } from 'antd';
-import { FolderOutlined, DeleteOutlined } from '@ant-design/icons';
+import { FolderOutlined, DeleteOutlined, MoreOutlined } from '@ant-design/icons';
 import type { RecentFolder } from '../../storage/recentFolders';
 
 interface FolderGridProps {
@@ -76,7 +76,7 @@ export function FolderGrid({
                 className="folder-card__delete"
                 onClick={(e) => e.stopPropagation()}
               >
-                ⋮
+                <MoreOutlined />
               </button>
             </Dropdown>
             <span className="folder-card__icon"><FolderOutlined /></span>

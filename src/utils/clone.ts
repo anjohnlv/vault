@@ -5,10 +5,7 @@ import type { VaultNode, FolderNode, FileNode } from '../types';
  * 同时兼容旧的已损坏数据（ArrayBuffer 变为 {} 或普通对象）
  */
 export function cloneTree(tree: VaultNode[]): VaultNode[] {
-  console.time('[cloneTree]');
-  const result = tree.map(cloneNode);
-  console.timeEnd('[cloneTree]');
-  return result;
+  return tree.map(cloneNode);
 }
 
 function cloneNode(node: VaultNode): VaultNode {

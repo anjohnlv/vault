@@ -18,18 +18,7 @@ export const INDEX_FILE = 'index.json';
 export const AUTH_FILE = 'auth.enc';
 export const SALT_FILE = 'salt';
 
-/** 支持预览的 MIME 类型 */
-export const TEXT_MIME_TYPES = [
-  'text/plain',
-  'text/html',
-  'text/css',
-  'text/javascript',
-  'application/json',
-  'application/xml',
-  'text/markdown',
-  'text/csv',
-];
-
+/** 支持预览的图片/PDF 类型 */
 export const IMAGE_MIME_TYPES = [
   'image/png',
   'image/jpeg',

@@ -2,7 +2,8 @@
  * 保险箱主画面组件（状态: unlocked）
  * 解锁后主界面，组合 Sidebar、Toolbar、FileList、Header 等子组件
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { App } from 'antd';
 import { useVault } from '../../context/VaultContext';
 import { Sidebar } from './Sidebar';
 import { FileList } from './FileList';
@@ -16,10 +17,17 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 
 export function VaultScreen() {
-  const { state, addFile, registerBiometric } = useVault();
+  const { state, addFile, registerBiometric, clearError } = useVault();
+  const { message } = App.useApp();
   const [showBiometricPwd, setShowBiometricPwd] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
-  const [fileSearchQuery, setFileSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (state.error) {
+      message.error(state.error);
+      clearError();
+    }
+  }, [state.error, message, clearError]);
 
   return (
     <div className="vault-screen">
@@ -32,12 +40,8 @@ export function VaultScreen() {
           webauthnRegistered={state.webauthnRegistered}
         />
         <main className="vault-main">
-          <Toolbar
-            onAddFile={addFile}
-            fileSearchQuery={fileSearchQuery}
-            onFileSearchChange={setFileSearchQuery}
-          />
-          <FileList fileSearchQuery={fileSearchQuery} />
+          <Toolbar onAddFile={addFile} />
+          <FileList />
           <BatchBar />
         </main>
       </div>

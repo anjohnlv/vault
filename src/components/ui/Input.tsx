@@ -17,10 +17,11 @@ interface InputProps {
   className?: string;
   autoFocus?: boolean;
   suffix?: React.ReactNode;
+  addonAfter?: React.ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, type, suffix, ...props }, ref) => {
+  ({ label, error, type, suffix, addonAfter, ...props }, ref) => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {label && (
@@ -45,6 +46,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             type={type}
             status={error ? 'error' : undefined}
             suffix={suffix}
+            addonAfter={addonAfter}
             {...(props as any)}
           />
         )}

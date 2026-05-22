@@ -1,6 +1,7 @@
 /**
  * 文件夹树形组件
  * 用于 Sidebar，支持展开/折叠、拖拽移动、右键菜单、加密文件夹解锁
+ * 支持文件夹名搜索和文件名搜索两种模式
  */
 import { useState, useEffect, useCallback, useMemo, useRef, type DragEvent } from 'react';
 import { App, Dropdown, message } from 'antd';
@@ -15,6 +16,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   KeyOutlined,
+  MoreOutlined,
 } from '@ant-design/icons';
 import { useVault } from '../../context/VaultContext';
 import type { VaultNode, FolderNode } from '../../types';
@@ -31,9 +33,31 @@ interface FolderTreeProps {
   depth?: number;
   autoExpandId?: string | null;
   searchQuery?: string;
+  searchMode?: 'folder' | 'file';
 }
 
-export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: FolderTreeProps) {
+/** 收集所有匹配文件的祖先文件夹 ID */
+function getAncestorsWithMatch(nodes: VaultNode[], query: string): Set<string> {
+  const ancestors = new Set<string>();
+  const q = query.toLowerCase();
+
+  const walk = (node: VaultNode): boolean => {
+    if (node.type === 'folder') {
+      let hasMatch = false;
+      for (const child of node.children) {
+        if (walk(child)) hasMatch = true;
+      }
+      if (hasMatch) ancestors.add(node.id);
+      return hasMatch;
+    }
+    return node.name.toLowerCase().includes(q);
+  };
+
+  for (const node of nodes) walk(node);
+  return ancestors;
+}
+
+export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, searchMode }: FolderTreeProps) {
   const { state, moveNode, setCurrentFolder, deleteNode, addFolder, changeFolderType, getRootFolder, verifyFolderPassword, renameNode, changeFolderPassword } = useVault();
   const { modal } = App.useApp();
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -50,6 +74,7 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
   const [changePwdVerifyOpen, setChangePwdVerifyOpen] = useState(false);
   const [changePwdSetOpen, setChangePwdSetOpen] = useState(false);
   const changePwdFolderRef = useRef<FolderNode | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FolderNode | null>(null);
 
   useEffect(() => {
     if (autoExpandId) {
@@ -58,8 +83,10 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
   }, [autoExpandId]);
 
   const searchActive = searchQuery && searchQuery.trim();
-  const filteredNodes = useMemo(() => {
-    if (!searchActive) return null;
+
+  // 文件夹名搜索模式：匹配文件夹名
+  const folderFilteredNodes = useMemo(() => {
+    if (!searchActive || searchMode === 'file') return null;
     const q = searchQuery.toLowerCase();
     const hasMatch = (n: VaultNode): boolean => {
       if (n.type === 'folder') {
@@ -69,10 +96,24 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
       return false;
     };
     return nodes.filter(hasMatch);
-  }, [searchActive, searchQuery, nodes]);
+  }, [searchActive, searchMode, searchQuery, nodes]);
 
-  const displayNodes = (filteredNodes ?? nodes).filter((n) => n.type === 'folder') as FolderNode[];
+  // 文件搜索模式：过滤出包含匹配文件的文件夹路径
+  const fileFilteredNodeIds = useMemo(() => {
+    if (!searchActive || searchMode !== 'file') return null;
+    return getAncestorsWithMatch(nodes, searchQuery);
+  }, [searchActive, searchMode, searchQuery, nodes]);
 
+  const displayNodes = useMemo(() => {
+    if (searchMode === 'file' && fileFilteredNodeIds) {
+      return nodes.filter((n): n is FolderNode =>
+        n.type === 'folder' && fileFilteredNodeIds.has(n.id)
+      );
+    }
+    return (folderFilteredNodes ?? nodes).filter((n) => n.type === 'folder') as FolderNode[];
+  }, [nodes, folderFilteredNodes, fileFilteredNodeIds, searchMode]);
+
+  // 搜索时自动展开所有显示的文件夹
   useEffect(() => {
     if (searchActive) {
       const expandAll: Record<string, boolean> = {};
@@ -133,6 +174,10 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
   }, [getRootFolder, handleChangeFolderType]);
 
   const handleDeleteFolder = useCallback((folder: FolderNode) => {
+    if (folder.encrypted) {
+      setDeleteTarget(folder);
+      return;
+    }
     modal.confirm({
       title: '删除文件夹',
       content: (
@@ -270,22 +315,27 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
                 )}
                 {state.vaultFolder?.name ?? 'Vault'}
               </span>
-              <Dropdown
-                menu={{ items: buildMenuItems(null) }}
-                trigger={['click']}
-                overlayClassName="folder-card-dropdown"
+              <span
+                className="folder-tree__delete-wrap"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
               >
-                <button
-                  className="folder-tree__delete"
-                  title="更多操作"
-                  onClick={(e) => e.stopPropagation()}
+                <Dropdown
+                  menu={{ items: buildMenuItems(null) }}
+                  trigger={['click']}
+                  overlayClassName="folder-card-dropdown"
                 >
-                  ⋮
-                </button>
-              </Dropdown>
+                  <button
+                    className="folder-tree__delete"
+                    title="更多操作"
+                  >
+                    <MoreOutlined />
+                  </button>
+                </Dropdown>
+              </span>
             </div>
-<FolderTree nodes={nodes} depth={depth + 1} autoExpandId={autoExpandId} searchQuery={searchQuery} />
-            </div>
+            <FolderTree nodes={nodes} depth={depth + 1} autoExpandId={autoExpandId} searchQuery={searchQuery} searchMode={searchMode} />
+          </div>
           ) : (
             displayNodes.map((folder) => (
             <div key={folder.id}>
@@ -314,22 +364,27 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
                 {folder.encrypted && state.folderAccess[folder.id] && (
                   <span className="folder-tree__unlocked"><CheckOutlined /></span>
                 )}
-                <Dropdown
-                  menu={{ items: buildMenuItems(folder) }}
-                  trigger={['click']}
-                  overlayClassName="folder-card-dropdown"
+                <span
+                  className="folder-tree__delete-wrap"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <button
-                    className="folder-tree__delete"
-                    title="更多操作"
-                    onClick={(e) => e.stopPropagation()}
+                  <Dropdown
+                    menu={{ items: buildMenuItems(folder) }}
+                    trigger={['click']}
+                    overlayClassName="folder-card-dropdown"
                   >
-                    ⋮
-                  </button>
-                </Dropdown>
+                    <button
+                      className="folder-tree__delete"
+                      title="更多操作"
+                    >
+                      <MoreOutlined />
+                    </button>
+                  </Dropdown>
+                </span>
               </div>
               {expanded[folder.id] && folder.children.length > 0 && (
-                <FolderTree nodes={folder.children} depth={depth + 1} autoExpandId={autoExpandId} searchQuery={searchQuery} />
+                <FolderTree nodes={folder.children} depth={depth + 1} autoExpandId={autoExpandId} searchQuery={searchQuery} searchMode={searchMode} />
               )}
             </div>
           ))
@@ -443,7 +498,13 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
           open
           currentName={renameTarget.name}
           onClose={() => setRenameTarget(null)}
-          onRename={(name) => renameNode(renameTarget.id, name)}
+          onRename={async (name) => {
+            try {
+              await renameNode(renameTarget.id, name);
+            } catch (err) {
+              message.error(err instanceof Error ? err.message : '重命名失败');
+            }
+          }}
         />
       )}
 
@@ -488,6 +549,27 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery }: Fold
           />
         );
       })()}
+
+      {deleteTarget && (
+        <VerifyPasswordModal
+          open
+          folderName={deleteTarget.name}
+          hint={deleteTarget.passwordHint}
+          tips={
+            <span style={{ color: 'var(--color-danger)', fontSize: '13px' }}>
+              文件夹中的所有内容（包括子文件夹和文件）都将被永久删除，无法恢复。
+            </span>
+          }
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={async (password) => {
+            const ok = await verifyFolderPassword(deleteTarget.id, password);
+            if (!ok) throw new Error('密码错误');
+            const id = deleteTarget.id;
+            setDeleteTarget(null);
+            await deleteNode(id);
+          }}
+        />
+      )}
     </>
   );
 }

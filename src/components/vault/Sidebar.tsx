@@ -14,6 +14,7 @@ import {
   DownOutlined,
   EditOutlined,
   KeyOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useVault } from '../../context/VaultContext';
@@ -25,6 +26,7 @@ import { Button } from '../ui/Button';
 import { SetPasswordModal } from '../modals/SetPasswordModal';
 import { VerifyPasswordModal } from '../modals/VerifyPasswordModal';
 import { RenameModal } from '../modals/RenameModal';
+import { TextMimeSettingsModal } from '../modals/TextMimeSettingsModal';
 import type { FolderNode } from '../../types';
 import { findNode } from '../../utils/tree';
 
@@ -52,6 +54,9 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
   const [changePwdVerifyOpen, setChangePwdVerifyOpen] = useState(false);
   const [changePwdSetOpen, setChangePwdSetOpen] = useState(false);
   const changePwdFolderRef = useRef<FolderNode | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FolderNode | null>(null);
+  const [showTextMimeSettings, setShowTextMimeSettings] = useState(false);
+  const [searchMode, setSearchMode] = useState<'folder' | 'file'>('folder');
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     const folderEl = (e.target as HTMLElement).closest('[data-folder-id]');
@@ -96,6 +101,11 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
   const handleDeleteFolder = useCallback(() => {
     const folder = getTargetFolder();
     if (!folder) return;
+    if (folder.encrypted) {
+      setDeleteTarget(folder);
+      setContextTargetId(null);
+      return;
+    }
     modal.confirm({
       title: '删除文件夹',
       content: (
@@ -212,7 +222,7 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
 
   return (
     <aside className="sidebar">
-      <SearchBar />
+      <SearchBar searchMode={searchMode} onSearchModeChange={setSearchMode} />
       <Dropdown
         menu={{ items: contextMenuItems }}
         trigger={['contextMenu']}
@@ -222,7 +232,7 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
           className="sidebar__tree"
           onContextMenu={handleContextMenu}
         >
-          <FolderTree nodes={(state.tree[0] as FolderNode | undefined)?.children ?? []} autoExpandId={autoExpandId} searchQuery={state.searchQuery} />
+          <FolderTree nodes={(state.tree[0] as FolderNode | undefined)?.children ?? []} autoExpandId={autoExpandId} searchQuery={state.searchQuery} searchMode={searchMode} />
         </div>
       </Dropdown>
 
@@ -321,7 +331,13 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
           open
           currentName={renameTarget.name}
           onClose={() => setRenameTarget(null)}
-          onRename={(name) => renameNode(renameTarget.id, name)}
+          onRename={async (name) => {
+            try {
+              await renameNode(renameTarget.id, name);
+            } catch (err) {
+              message.error(err instanceof Error ? err.message : '重命名失败');
+            }
+          }}
         />
       )}
 
@@ -367,6 +383,27 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
         );
       })()}
 
+      {deleteTarget && (
+        <VerifyPasswordModal
+          open
+          folderName={deleteTarget.name}
+          hint={deleteTarget.passwordHint}
+          tips={
+            <span style={{ color: 'var(--color-danger)', fontSize: '13px' }}>
+              文件夹中的所有内容（包括子文件夹和文件）都将被永久删除，无法恢复。
+            </span>
+          }
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={async (password) => {
+            const ok = await verifyFolderPassword(deleteTarget.id, password);
+            if (!ok) throw new Error('密码错误');
+            const id = deleteTarget.id;
+            setDeleteTarget(null);
+            await deleteNode(id);
+          }}
+        />
+      )}
+
       <div className="sidebar__settings">
         <div
           className="sidebar__settings-label"
@@ -382,6 +419,9 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
             <button className="sidebar__settings-item" onClick={onChangePassword}>
               <LockOutlined /> 修改主密码
             </button>
+            <button className="sidebar__settings-item" onClick={() => setShowTextMimeSettings(true)}>
+              <FileTextOutlined /> 文本类型配置
+            </button>
             {webauthnAvailable && !webauthnRegistered && (
               <button className="sidebar__settings-item" onClick={onRegisterBiometric}>
                 <SafetyOutlined /> 注册指纹解锁
@@ -390,6 +430,11 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
           </div>
         </div>
       </div>
+
+      <TextMimeSettingsModal
+        open={showTextMimeSettings}
+        onClose={() => setShowTextMimeSettings(false)}
+      />
     </aside>
   );
 }

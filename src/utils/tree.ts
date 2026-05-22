@@ -85,6 +85,48 @@ export function insertNode(
   return false;
 }
 
+/** 获取指定父文件夹下的所有子节点名称（用于重名检测） */
+export function getSiblingNames(tree: VaultNode[], parentId: string | null): Set<string> {
+  const names = new Set<string>();
+  if (parentId === null) {
+    for (const node of tree) names.add(node.name);
+    return names;
+  }
+  for (const node of tree) {
+    if (node.type === 'folder' && node.id === parentId) {
+      for (const child of node.children) names.add(child.name);
+      return names;
+    }
+    if (node.type === 'folder') {
+      const found = getSiblingNames(node.children, parentId);
+      if (found.size > 0) return found;
+    }
+  }
+  return names;
+}
+
+/** 生成同文件夹下不重复的文件名（同名则追加 (1) (2) …） */
+export function getUniqueName(
+  tree: VaultNode[],
+  parentId: string | null,
+  desiredName: string,
+): string {
+  const existing = getSiblingNames(tree, parentId);
+  if (!existing.has(desiredName)) return desiredName;
+
+  const dotIndex = desiredName.lastIndexOf('.');
+  const base = dotIndex > 0 ? desiredName.slice(0, dotIndex) : desiredName;
+  const ext = dotIndex > 0 ? desiredName.slice(dotIndex) : '';
+
+  let counter = 1;
+  let name: string;
+  do {
+    name = `${base} (${counter})${ext}`;
+    counter++;
+  } while (existing.has(name));
+  return name;
+}
+
 /** 递归搜索匹配名称的节点 */
 export function searchNodes(
   tree: VaultNode[],

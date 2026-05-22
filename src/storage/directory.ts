@@ -46,6 +46,22 @@ export async function getDataDir(
   return vaultHandle.getDirectoryHandle(VAULT_DATA_DIR);
 }
 
+async function resolveFileHandle(
+  vaultHandle: FileSystemDirectoryHandle,
+  path: string,
+  create: boolean,
+): Promise<FileSystemFileHandle> {
+  const parts = path.split('/');
+  if (parts.length === 1) {
+    return vaultHandle.getFileHandle(parts[0]!, { create });
+  }
+  let dir = vaultHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    dir = await dir.getDirectoryHandle(parts[i]!, { create });
+  }
+  return dir.getFileHandle(parts[parts.length - 1]!, { create });
+}
+
 /**
  * 从保险箱中读取文件
  */
@@ -53,7 +69,7 @@ export async function readVaultFile(
   vaultHandle: FileSystemDirectoryHandle,
   path: string,
 ): Promise<ArrayBuffer> {
-  const fileHandle = await vaultHandle.getFileHandle(path);
+  const fileHandle = await resolveFileHandle(vaultHandle, path, false);
   const file = await fileHandle.getFile();
   return file.arrayBuffer();
 }
@@ -67,7 +83,7 @@ export async function writeVaultFile(
   path: string,
   data: ArrayBuffer,
 ): Promise<void> {
-  const fileHandle = await vaultHandle.getFileHandle(path, { create: true });
+  const fileHandle = await resolveFileHandle(vaultHandle, path, true);
   const writable = await fileHandle.createWritable();
   await writable.write(data);
   await writable.close();
@@ -82,7 +98,16 @@ export async function deleteVaultFile(
   path: string,
 ): Promise<boolean> {
   try {
-    await vaultHandle.removeEntry(path);
+    const parts = path.split('/');
+    if (parts.length === 1) {
+      await vaultHandle.removeEntry(parts[0]!);
+      return true;
+    }
+    let dir = vaultHandle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      dir = await dir.getDirectoryHandle(parts[i]!);
+    }
+    await dir.removeEntry(parts[parts.length - 1]!);
     return true;
   } catch {
     return false;
@@ -97,7 +122,7 @@ export async function fileExists(
   path: string,
 ): Promise<boolean> {
   try {
-    await vaultHandle.getFileHandle(path);
+    await resolveFileHandle(vaultHandle, path, false);
     return true;
   } catch {
     return false;

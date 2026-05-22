@@ -74,24 +74,38 @@ export async function deleteEncryptedFile(
 /** 写入普通文件（不加密） */
 export async function writePlainFile(
   vaultHandle: FileSystemDirectoryHandle,
-  uuid: string,
+  filename: string,
   data: ArrayBuffer,
 ): Promise<void> {
-  await writeVaultFile(vaultHandle, `${VAULT_PLAIN_DIR}/${uuid}.bin`, data);
+  await writeVaultFile(vaultHandle, `${VAULT_PLAIN_DIR}/${filename}`, data);
+}
+
+/**
+ * 将外部文件直接移动到 plain/ 目录（物理移动，非复制）
+ * 使用 File System Access API 的 FileSystemFileHandle.move()
+ */
+export async function moveFileToPlain(
+  vaultHandle: FileSystemDirectoryHandle,
+  fileHandle: FileSystemFileHandle,
+  filename: string,
+): Promise<string> {
+  const plainDir = await vaultHandle.getDirectoryHandle(VAULT_PLAIN_DIR);
+  await fileHandle.move(plainDir, filename);
+  return `${VAULT_PLAIN_DIR}/${filename}`;
 }
 
 /** 读取普通文件（不解密） */
 export async function readPlainFile(
   vaultHandle: FileSystemDirectoryHandle,
-  uuid: string,
+  filename: string,
 ): Promise<ArrayBuffer> {
-  return readVaultFile(vaultHandle, `${VAULT_PLAIN_DIR}/${uuid}.bin`);
+  return readVaultFile(vaultHandle, `${VAULT_PLAIN_DIR}/${filename}`);
 }
 
 /** 删除普通文件 */
 export async function deletePlainFile(
   vaultHandle: FileSystemDirectoryHandle,
-  uuid: string,
+  filename: string,
 ): Promise<boolean> {
-  return deleteVaultFile(vaultHandle, `${VAULT_PLAIN_DIR}/${uuid}.bin`);
+  return deleteVaultFile(vaultHandle, `${VAULT_PLAIN_DIR}/${filename}`);
 }

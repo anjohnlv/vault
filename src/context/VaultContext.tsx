@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useReducer,
   useRef,
   type ReactNode,
@@ -17,6 +18,7 @@ import type {
   FileOrigin,
 } from '../types';
 import { generateUUID } from '../utils/format';
+import { initTextExtensions } from '../utils/textMimeTypes';
 import { NOTE_MIME_TYPE, PASSWORD_BOOK_MIME_TYPE } from '../utils/constants';
 import { deriveMasterKey, generateSalt, derivePasswordHash } from '../crypto/deriveKey';
 import { generateFileKey } from '../crypto/generateKey';
@@ -31,9 +33,10 @@ import {
   writePlainFile,
   readPlainFile,
   deletePlainFile,
+  moveFileToPlain,
 } from '../storage/fileStorage';
 import { isPlatformAuthAvailable, registerWebAuthn, saveWebAuthnInfo, hasWebAuthn, encryptWithWebAuthn, decryptWithWebAuthn } from '../auth/webauthn';
-import { findNode, removeNode, insertNode, searchNodes } from '../utils/tree';
+import { findNode, findParent, removeNode, insertNode, searchNodes, getUniqueName, getSiblingNames } from '../utils/tree';
 import { cloneTree } from '../utils/clone';
 
 // ---- State ----
@@ -49,9 +52,9 @@ interface VaultState {
   webauthnRegistered: boolean;
   searchQuery: string;
   searchResults: VaultNode[];
+  fileFilter: string;
   sortBy: SortField;
   sortOrder: SortOrder;
-  batchMode: boolean;
   selectedFileIds: string[];
   editingFileId: string | null;
   error: string | null;
@@ -69,8 +72,8 @@ type VaultAction =
   | { type: 'SET_WEBAUTHN_REGISTERED'; payload: boolean }
   | { type: 'SET_SEARCH_QUERY'; payload: string }
   | { type: 'SET_SEARCH_RESULTS'; payload: VaultNode[] }
+  | { type: 'SET_FILE_FILTER'; payload: string }
   | { type: 'SET_SORT'; payload: { sortBy: SortField; sortOrder: SortOrder } }
-  | { type: 'SET_BATCH_MODE'; payload: boolean }
   | { type: 'SET_SELECTED_FILES'; payload: string[] }
   | { type: 'SET_EDITING_FILE'; payload: string | null }
   | { type: 'SET_ERROR'; payload: string | null }
@@ -88,9 +91,9 @@ const initialState: VaultState = {
   webauthnRegistered: false,
   searchQuery: '',
   searchResults: [],
+  fileFilter: '',
   sortBy: 'modifiedAt',
   sortOrder: 'desc',
-  batchMode: false,
   selectedFileIds: [],
   editingFileId: null,
   error: null,
@@ -109,8 +112,8 @@ function vaultReducer(state: VaultState, action: VaultAction): VaultState {
     case 'SET_WEBAUTHN_REGISTERED': return { ...state, webauthnRegistered: action.payload };
     case 'SET_SEARCH_QUERY': return { ...state, searchQuery: action.payload };
     case 'SET_SEARCH_RESULTS': return { ...state, searchResults: action.payload };
+    case 'SET_FILE_FILTER': return { ...state, fileFilter: action.payload };
     case 'SET_SORT': return { ...state, sortBy: action.payload.sortBy, sortOrder: action.payload.sortOrder };
-    case 'SET_BATCH_MODE': return { ...state, batchMode: action.payload, selectedFileIds: [] };
     case 'SET_SELECTED_FILES': return { ...state, selectedFileIds: action.payload };
     case 'SET_EDITING_FILE': return { ...state, editingFileId: action.payload };
     case 'SET_ERROR': return { ...state, error: action.payload };
@@ -133,7 +136,7 @@ interface VaultContextValue {
   unlock: (folder: FileSystemDirectoryHandle, password: string) => Promise<boolean>;
   unlockWithWebAuthn: (folder: FileSystemDirectoryHandle) => Promise<boolean>;
   lock: () => void;
-  addFile: (file: File) => Promise<void>;
+  addFile: (handle: FileSystemFileHandle) => Promise<void>;
   createNote: (name: string, parentId: string | null) => Promise<void>;
   createPasswordBook: (
     name: string,
@@ -162,10 +165,12 @@ interface VaultContextValue {
   setFolderUnlockTimeout: (folderId: string, timeoutMs: number) => Promise<void>;
   setSortBy: (field: SortField, order: SortOrder) => void;
   setSearchQuery: (query: string) => void;
-  toggleBatchMode: () => void;
+  setFileFilter: (query: string) => void;
   toggleFileSelection: (id: string) => void;
+  setSelectedFileIds: (ids: string[]) => void;
   batchDelete: () => Promise<void>;
   batchExport: () => Promise<void>;
+  batchMove: (targetFolderId: string | null) => Promise<void>;
   setCurrentFolder: (id: string | null) => void;
   setEditingFile: (id: string | null) => void;
   saveFileContent: (fileId: string, content: string) => Promise<void>;
@@ -177,6 +182,9 @@ const VaultContext = createContext<VaultContextValue | null>(null);
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(vaultReducer, initialState);
   const masterKeyRef = useRef<CryptoKey | null>(null);
+
+  // 应用启动时从 IndexedDB 加载用户自定义文本 MIME 类型
+  useEffect(() => { initTextExtensions(); }, []);
 
   const setError = useCallback((msg: string | null) => dispatch({ type: 'SET_ERROR', payload: msg }), []);
   const setLoading = useCallback((v: boolean) => dispatch({ type: 'SET_LOADING', payload: v }), []);
@@ -311,12 +319,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [state.vaultFolder, state.rootId, setError]);
 
   // ---- 添加外部文件 ----
-  const addFile = useCallback(async (file: File) => {
+  const addFile = useCallback(async (handle: FileSystemFileHandle) => {
     const masterKey = masterKeyRef.current;
     if (!masterKey || !state.vaultFolder) return;
     setLoading(true);
     try {
       const id = generateUUID();
+      const file = await handle.getFile();
       const parent = state.currentFolderId ? (findNode(state.tree, state.currentFolderId) as FolderNode | null) : (state.tree[0] as FolderNode | null);
       const encrypt = parent ? parent.encrypted : false;
 
@@ -337,9 +346,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           encPath, encryptedKey, iv, fileIv,
         };
       } else {
-        const data = await file.arrayBuffer();
-        await writePlainFile(state.vaultFolder, id, data);
-        encPath = `plain/${id}.bin`;
+        const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : '';
+        encPath = await moveFileToPlain(state.vaultFolder, handle, `${id}${ext}`);
         newNode = {
           id, name: file.name, type: 'file',
           origin: 'import' as FileOrigin,
@@ -350,7 +358,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
 
       const newTree = cloneTree(state.tree);
-      insertNode(newTree, newNode, state.currentFolderId);
+      const uniqueName = getUniqueName(newTree, state.currentFolderId, newNode.name);
+      insertNode(newTree, { ...newNode, name: uniqueName }, state.currentFolderId);
       await saveIndex(newTree);
     } catch (err) {
       setError(err instanceof Error ? err.message : '添加文件失败');
@@ -366,20 +375,33 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const id = generateUUID();
-      const fileKey = await generateFileKey();
+      const parent = parentId ? (findNode(state.tree, parentId) as FolderNode | null) : (state.tree[0] as FolderNode | null);
+      const encrypt = parent ? parent.encrypted : false;
       const plaintext = new TextEncoder().encode('');
-      const fileIv = await storeEncryptedFile(state.vaultFolder, id, plaintext, fileKey);
-      const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
+      let newNode: FileNode;
 
-      const newNode: FileNode = {
-        id, name: `${name}.txt`, type: 'file',
-        origin: 'note', mimeType: NOTE_MIME_TYPE,
-        size: 0, createdAt: Date.now(), modifiedAt: Date.now(),
-        encPath: `data/${id}.enc`, encryptedKey, iv, fileIv,
-      };
+      if (encrypt) {
+        const fileKey = await generateFileKey();
+        const fileIv = await storeEncryptedFile(state.vaultFolder, id, plaintext, fileKey);
+        const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
+        newNode = {
+          id, name: `${name}.txt`, type: 'file',
+          origin: 'note', mimeType: NOTE_MIME_TYPE,
+          size: 0, createdAt: Date.now(), modifiedAt: Date.now(),
+          encPath: `data/${id}.enc`, encryptedKey, iv, fileIv,
+        };
+      } else {
+        newNode = {
+          id, name: `${name}.txt`, type: 'file',
+          origin: 'note', mimeType: NOTE_MIME_TYPE,
+          size: 0, createdAt: Date.now(), modifiedAt: Date.now(),
+          encPath: `plain/${id}.txt`,
+        };
+      }
 
       const newTree = cloneTree(state.tree);
-      insertNode(newTree, newNode, parentId ?? state.rootId);
+      const uniqueName = getUniqueName(newTree, parentId ?? state.rootId, newNode.name);
+      insertNode(newTree, { ...newNode, name: uniqueName }, parentId ?? state.rootId);
       await saveIndex(newTree);
       dispatch({ type: 'SET_EDITING_FILE', payload: id });
     } catch (err) {
@@ -398,24 +420,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const masterKey = masterKeyRef.current;
     if (!masterKey || !state.vaultFolder) return;
     try {
-      // 密码本必须在加密文件夹中
-      const encryptParent = parentId 
-        ? (findNode(state.tree, parentId) as FolderNode | null)
-        : null;
-      if (!encryptParent || encryptParent.type !== 'folder' || !encryptParent.encrypted) {
-        const msg = '密码本必须存放在加密文件夹中，请先创建加密文件夹'; setError(msg); throw new Error(msg);
-      }
-      if (!state.folderAccess[encryptParent.id]) {
-        const msg = '请先解锁该加密文件夹'; setError(msg); throw new Error(msg);
-      }
 
       setLoading(true);
       const id = generateUUID();
-      const fileKey = await generateFileKey();
       const plaintext = new TextEncoder().encode('[]');
+
+      // 密码本始终使用 AES-256-GCM 加密，无论父文件夹是否加密
+      const fileKey = await generateFileKey();
       const fileIv = await storeEncryptedFile(state.vaultFolder, id, plaintext, fileKey);
       const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
-
       const newNode: FileNode = {
         id, name: `${name}.pbook`, type: 'file',
         origin: 'password-book', mimeType: PASSWORD_BOOK_MIME_TYPE,
@@ -424,7 +437,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       };
 
       const newTree = cloneTree(state.tree);
-      insertNode(newTree, newNode, parentId ?? state.rootId);
+      const uniqueName = getUniqueName(newTree, parentId ?? state.rootId, newNode.name);
+      insertNode(newTree, { ...newNode, name: uniqueName }, parentId ?? state.rootId);
       await saveIndex(newTree);
       dispatch({ type: 'SET_EDITING_FILE', payload: id });
     } catch (err) {
@@ -445,12 +459,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
     const deleteFile = async (n: VaultNode) => {
       if (n.type !== 'file') return;
-      const parts = n.encPath.split('/');
-      const uuid = parts[parts.length - 1].replace('.enc', '').replace('.bin', '');
+      const filename = n.encPath.split('/').pop() ?? '';
       if (n.encPath.startsWith('data/')) {
+        const uuid = filename.replace('.enc', '');
         await deleteEncryptedFile(state.vaultFolder!, uuid);
       } else {
-        await deletePlainFile(state.vaultFolder!, uuid);
+        await deletePlainFile(state.vaultFolder!, filename);
       }
     };
 
@@ -481,15 +495,22 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (!node || node.type !== 'file') return null;
 
     try {
-      const uuid = node.encPath.split('/').pop()?.split('.')[0] ?? id;
+      const filename = node.encPath.split('/').pop() ?? `${id}.bin`;
 
       if (node.encryptedKey) {
+        const uuid = filename.replace('.enc', '');
         const fileKey = await unwrapFileKey(node.encryptedKey, node.iv!, masterKey);
         const { data } = await readEncryptedFile(state.vaultFolder, uuid, fileKey);
         const blob = new Blob([data], { type: node.mimeType });
         return { blob, name: node.name };
       } else {
-        const data = await readPlainFile(state.vaultFolder, uuid);
+        let data: ArrayBuffer;
+        try {
+          data = await readPlainFile(state.vaultFolder, filename);
+        } catch {
+          // 延迟写入的文件（笔记/密码本尚未保存）不存在时返回空内容
+          data = new ArrayBuffer(0);
+        }
         const blob = new Blob([data], { type: node.mimeType });
         return { blob, name: node.name };
       }
@@ -519,18 +540,88 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const newTree = cloneTree(state.tree) as VaultNode[];
     const node = findNode(newTree, id);
     if (!node) return;
+    if (node.name === newName) return;
+
+    const parent = findParent(newTree, id);
+    const parentId = parent?.id ?? null;
+    const siblings = getSiblingNames(newTree, parentId);
+    if (siblings.has(newName)) {
+      throw new Error(`「${newName}」已存在，请使用其他名称`);
+    }
+
     node.name = newName;
     await saveIndex(newTree);
   }, [state.tree, saveIndex]);
 
   // ---- 移动节点 ----
   const moveNode = useCallback(async (id: string, targetFolderId: string | null) => {
-    const newTree = cloneTree(state.tree);
-    const node = removeNode(newTree, id);
-    if (!node) return;
-    insertNode(newTree, node, targetFolderId ?? state.rootId);
-    await saveIndex(newTree);
-  }, [state.tree, state.rootId, saveIndex]);
+    const masterKey = masterKeyRef.current;
+    if (!masterKey || !state.vaultFolder) return;
+    setLoading(true);
+    try {
+      const newTree = cloneTree(state.tree);
+      const node = removeNode(newTree, id);
+      if (!node) return;
+
+      // 文件夹直接移动，无需加解密转换
+      if (node.type === 'folder') {
+        insertNode(newTree, node, targetFolderId ?? state.rootId);
+        await saveIndex(newTree);
+        return;
+      }
+
+      const file = node as FileNode;
+      const targetFolder = targetFolderId
+        ? (findNode(newTree, targetFolderId) as FolderNode | null)
+        : (newTree[0] as FolderNode | null);
+      if (!targetFolder) return;
+
+      const sourceEncrypted = !!file.encryptedKey;
+      const targetEncrypted = targetFolder.encrypted;
+
+      let movedFile: FileNode;
+
+      if (sourceEncrypted === targetEncrypted) {
+        // 加解密状态一致，直接移动
+        movedFile = file;
+      } else if (sourceEncrypted && !targetEncrypted) {
+        // 加密 → 普通：解密后存为明文
+        const filename = file.encPath.split('/').pop() ?? '';
+        const uuid = filename.replace(/\.\w+$/, '');
+        const fileKey = await unwrapFileKey(file.encryptedKey!, file.iv!, masterKey);
+        const { data } = await readEncryptedFile(state.vaultFolder, uuid, fileKey);
+        await deleteEncryptedFile(state.vaultFolder, uuid);
+        await writePlainFile(state.vaultFolder, `${uuid}.bin`, data);
+        movedFile = {
+          id: file.id, name: file.name, type: 'file',
+          origin: file.origin, mimeType: file.mimeType,
+          size: file.size, createdAt: file.createdAt, modifiedAt: file.modifiedAt,
+          encPath: `plain/${uuid}.bin`,
+        };
+      } else {
+        // 普通 → 加密：加密后存为 data/{uuid}.enc
+        const filename = file.encPath.split('/').pop() ?? '';
+        const uuid = filename.replace(/\.\w+$/, '');
+        const data = await readPlainFile(state.vaultFolder, filename);
+        await deletePlainFile(state.vaultFolder, filename);
+        const fileKey = await generateFileKey();
+        const fileIv = await storeEncryptedFile(state.vaultFolder, uuid, data, fileKey);
+        const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
+        movedFile = {
+          ...file,
+          encPath: `data/${uuid}.enc`,
+          encryptedKey, iv, fileIv,
+        };
+      }
+
+      insertNode(newTree, movedFile, targetFolderId ?? state.rootId);
+      await saveIndex(newTree);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '移动文件失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [state.vaultFolder, state.tree, state.rootId, saveIndex, masterKeyRef, setError, setLoading]);
 
   // ---- 添加文件夹 ----
   const addFolder = useCallback(async (
@@ -587,12 +678,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         for (const node of nodes) {
           if (node.type === 'file') {
             const file = node as FileNode;
-            const parts = file.encPath.split('/');
-            const uuid = parts[parts.length - 1].replace('.enc', '').replace('.bin', '');
+            const filename = file.encPath.split('/').pop() ?? '';
+            const uuid = filename.replace(/\.\w+$/, '');
 
             if (encrypted && !file.encryptedKey) {
-              const data = await readPlainFile(state.vaultFolder!, uuid);
-              await deletePlainFile(state.vaultFolder!, uuid);
+              const data = await readPlainFile(state.vaultFolder!, filename);
+              await deletePlainFile(state.vaultFolder!, filename);
               const fileKey = await generateFileKey();
               const fileIv = await storeEncryptedFile(state.vaultFolder!, uuid, data, fileKey);
               const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
@@ -604,7 +695,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
               const fk = await unwrapFileKey(file.encryptedKey, file.iv!, masterKey);
               const { data } = await readEncryptedFile(state.vaultFolder!, uuid, fk);
               await deleteEncryptedFile(state.vaultFolder!, uuid);
-              await writePlainFile(state.vaultFolder!, uuid, data);
+              await writePlainFile(state.vaultFolder!, `${uuid}.bin`, data);
               file.encPath = `plain/${uuid}.bin`;
               delete file.encryptedKey;
               delete file.iv;
@@ -825,11 +916,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [state.tree]);
 
-  // ---- 批量操作 ----
-  const toggleBatchMode = useCallback(() => {
-    dispatch({ type: 'SET_BATCH_MODE', payload: !state.batchMode });
-  }, [state.batchMode]);
+  const setFileFilter = useCallback((query: string) => {
+    dispatch({ type: 'SET_FILE_FILTER', payload: query });
+  }, []);
 
+  // ---- 批量操作 ----
   const toggleFileSelection = useCallback((id: string) => {
     const selected = state.selectedFileIds.includes(id)
       ? state.selectedFileIds.filter((fid) => fid !== id)
@@ -837,18 +928,126 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_SELECTED_FILES', payload: selected });
   }, [state.selectedFileIds]);
 
+  const setSelectedFileIds = useCallback((ids: string[]) => {
+    dispatch({ type: 'SET_SELECTED_FILES', payload: ids });
+  }, []);
+
   const batchDelete = useCallback(async () => {
+    if (!state.vaultFolder) return;
+
+    const newTree = cloneTree(state.tree);
+
+    // 收集所有需要物理删除的文件
+    const collectFiles = (node: VaultNode): FileNode[] => {
+      if (node.type === 'file') return [node];
+      const files: FileNode[] = [];
+      for (const child of node.children) {
+        files.push(...collectFiles(child));
+      }
+      return files;
+    };
+
     for (const id of state.selectedFileIds) {
-      await deleteNode(id);
+      const node = findNode(newTree, id);
+      if (!node) continue;
+
+      // 物理删除文件
+      const toDelete: FileNode[] = node.type === 'file' ? [node as FileNode] : collectFiles(node);
+      for (const n of toDelete) {
+        const filename = n.encPath.split('/').pop() ?? '';
+        if (n.encPath.startsWith('data/')) {
+          const uuid = filename.replace('.enc', '');
+          await deleteEncryptedFile(state.vaultFolder, uuid);
+        } else {
+          await deletePlainFile(state.vaultFolder, filename);
+        }
+      }
+
+      removeNode(newTree, id);
     }
-    dispatch({ type: 'SET_BATCH_MODE', payload: false });
-  }, [state.selectedFileIds, deleteNode]);
+
+    await saveIndex(newTree);
+    dispatch({ type: 'SET_SELECTED_FILES', payload: [] });
+  }, [state.selectedFileIds, state.vaultFolder, state.tree, saveIndex]);
 
   const batchExport = useCallback(async () => {
     for (const id of state.selectedFileIds) {
       await exportFile(id);
     }
   }, [state.selectedFileIds, exportFile]);
+
+  const batchMove = useCallback(async (targetFolderId: string | null) => {
+    const masterKey = masterKeyRef.current;
+    if (!masterKey || !state.vaultFolder) return;
+    setLoading(true);
+    try {
+      const newTree = cloneTree(state.tree);
+      const targetFolder = targetFolderId
+        ? (findNode(newTree, targetFolderId) as FolderNode | null)
+        : (newTree[0] as FolderNode | null);
+      if (!targetFolder) return;
+
+      const targetEncrypted = targetFolder.encrypted;
+
+      for (const id of state.selectedFileIds) {
+        const node = removeNode(newTree, id);
+        if (!node) return;
+
+        // 文件夹直接移动
+        if (node.type === 'folder') {
+          insertNode(newTree, node, targetFolderId ?? state.rootId);
+          continue;
+        }
+
+        const file = node as FileNode;
+        const sourceEncrypted = !!file.encryptedKey;
+        const sameEncryption = sourceEncrypted === targetEncrypted;
+
+        let movedFile: FileNode;
+
+        if (sameEncryption) {
+          movedFile = file;
+        } else if (sourceEncrypted && !targetEncrypted) {
+          // 加密 → 普通
+          const filename = file.encPath.split('/').pop() ?? '';
+          const uuid = filename.replace(/\.\w+$/, '');
+          const fileKey = await unwrapFileKey(file.encryptedKey!, file.iv!, masterKey);
+          const { data } = await readEncryptedFile(state.vaultFolder, uuid, fileKey);
+          await deleteEncryptedFile(state.vaultFolder, uuid);
+          await writePlainFile(state.vaultFolder, `${uuid}.bin`, data);
+          movedFile = {
+            id: file.id, name: file.name, type: 'file',
+            origin: file.origin, mimeType: file.mimeType,
+            size: file.size, createdAt: file.createdAt, modifiedAt: file.modifiedAt,
+            encPath: `plain/${uuid}.bin`,
+          };
+        } else {
+          // 普通 → 加密
+          const filename = file.encPath.split('/').pop() ?? '';
+          const uuid = filename.replace(/\.\w+$/, '');
+          const data = await readPlainFile(state.vaultFolder, filename);
+          await deletePlainFile(state.vaultFolder, filename);
+          const fileKey = await generateFileKey();
+          const fileIv = await storeEncryptedFile(state.vaultFolder, uuid, data, fileKey);
+          const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
+          movedFile = {
+            ...file,
+            encPath: `data/${uuid}.enc`,
+            encryptedKey, iv, fileIv,
+          };
+        }
+
+        insertNode(newTree, movedFile, targetFolderId ?? state.rootId);
+      }
+
+      await saveIndex(newTree);
+      dispatch({ type: 'SET_SELECTED_FILES', payload: [] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '批量移动失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [state.selectedFileIds, state.vaultFolder, state.tree, state.rootId, saveIndex, masterKeyRef, setError, setLoading]);
 
   
   // ---- 导航到文件夹 ----
@@ -868,32 +1067,56 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (!masterKey || !state.vaultFolder) return;
     try {
       const node = findNode(state.tree, fileId);
-      if (!node || node.type !== 'file' || !node.encryptedKey) return;
+      if (!node || node.type !== 'file') return;
 
-      const fileKey = await unwrapFileKey(node.encryptedKey, node.iv!, masterKey);
-      const uuid = node.encPath.replace('data/', '').replace('.enc', '');
       const plaintext = new TextEncoder().encode(content);
-      const newIv = await storeEncryptedFile(state.vaultFolder, uuid, plaintext, fileKey);
+      const filename = node.encPath.split('/').pop() ?? `${fileId}.bin`;
 
-      // 更新节点元数据（使用不可变模式）
-      const updateNode = (nodes: VaultNode[]): VaultNode[] =>
-        nodes.map((n) => {
-          if (n.type === 'file' && n.id === fileId) {
-            return {
-              ...n,
-              size: plaintext.byteLength,
-              modifiedAt: Date.now(),
-              fileIv: newIv,
-            };
-          }
-          if (n.type === 'folder') {
-            return { ...n, children: updateNode(n.children) };
-          }
-          return n;
-        });
+      if (node.encryptedKey) {
+        const uuid = filename.replace('.enc', '');
+        const fileKey = await unwrapFileKey(node.encryptedKey, node.iv!, masterKey);
+        const newIv = await storeEncryptedFile(state.vaultFolder, uuid, plaintext, fileKey);
 
-      const newTree = updateNode(state.tree);
-      await saveIndex(newTree);
+        // 更新节点元数据（使用不可变模式）
+        const updateNode = (nodes: VaultNode[]): VaultNode[] =>
+          nodes.map((n) => {
+            if (n.type === 'file' && n.id === fileId) {
+              return {
+                ...n,
+                size: plaintext.byteLength,
+                modifiedAt: Date.now(),
+                fileIv: newIv,
+              };
+            }
+            if (n.type === 'folder') {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+
+        const newTree = updateNode(state.tree);
+        await saveIndex(newTree);
+      } else {
+        await writePlainFile(state.vaultFolder, filename, plaintext.buffer);
+
+        const updateNode = (nodes: VaultNode[]): VaultNode[] =>
+          nodes.map((n) => {
+            if (n.type === 'file' && n.id === fileId) {
+              return {
+                ...n,
+                size: plaintext.byteLength,
+                modifiedAt: Date.now(),
+              };
+            }
+            if (n.type === 'folder') {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+
+        const newTree = updateNode(state.tree);
+        await saveIndex(newTree);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失败');
     }
@@ -914,8 +1137,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     renameNode, moveNode, addFolder, getRootFolder, changeFolderType, changeFolderPassword, toggleRootEncrypted,
     changePassword, registerBiometric,
     verifyFolderPassword, setFolderUnlockTimeout,
-    setSortBy, setSearchQuery,
-    toggleBatchMode, toggleFileSelection, batchDelete, batchExport,
+    setSortBy, setSearchQuery, setFileFilter,
+    toggleFileSelection, setSelectedFileIds, batchDelete, batchExport, batchMove,
     setCurrentFolder, setEditingFile, saveFileContent, clearError,
   };
 
