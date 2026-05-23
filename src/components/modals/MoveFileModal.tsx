@@ -83,7 +83,7 @@ export function MoveFileModal({ open, currentFolderId, title, onCancel, onConfir
       onOk={handleOk}
       okText="移动到此处"
       okButtonProps={{ disabled: !selectedKey }}
-      destroyOnClose
+      destroyOnHidden
       centered
       width={420}
     >

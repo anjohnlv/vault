@@ -17,8 +17,8 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 
 export function VaultScreen() {
-  const { state, addFile, registerBiometric, clearError } = useVault();
-  const { message } = App.useApp();
+  const { state, addFile, registerBiometric, removeBiometric, clearError } = useVault();
+  const { message, modal } = App.useApp();
   const [showBiometricPwd, setShowBiometricPwd] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
 
@@ -29,6 +29,20 @@ export function VaultScreen() {
     }
   }, [state.error, message, clearError]);
 
+  const handleRemoveBiometric = () => {
+    modal.confirm({
+      title: '删除指纹验证',
+      content: '确定要删除指纹验证吗？删除后只能用主密码解锁保险箱。',
+      okText: '确认删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const ok = await removeBiometric();
+        if (ok) message.success('指纹验证已删除');
+      },
+    });
+  };
+
   return (
     <div className="vault-screen">
       <Header />
@@ -36,6 +50,7 @@ export function VaultScreen() {
         <Sidebar
           onChangePassword={() => setShowChangePwd(true)}
           onRegisterBiometric={() => setShowBiometricPwd(true)}
+          onRemoveBiometric={handleRemoveBiometric}
           webauthnAvailable={state.webauthnAvailable}
           webauthnRegistered={state.webauthnRegistered}
         />

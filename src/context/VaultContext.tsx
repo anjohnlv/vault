@@ -35,7 +35,7 @@ import {
   deletePlainFile,
   moveFileToPlain,
 } from '../storage/fileStorage';
-import { isPlatformAuthAvailable, registerWebAuthn, saveWebAuthnInfo, hasWebAuthn, encryptWithWebAuthn, decryptWithWebAuthn } from '../auth/webauthn';
+import { isPlatformAuthAvailable, registerWebAuthn, saveWebAuthnInfo, hasWebAuthn, encryptWithWebAuthn, decryptWithWebAuthn, removeWebAuthn } from '../auth/webauthn';
 import { findNode, findParent, removeNode, insertNode, searchNodes, getUniqueName, getSiblingNames } from '../utils/tree';
 import { cloneTree } from '../utils/clone';
 
@@ -161,6 +161,7 @@ interface VaultContextValue {
   getRootFolder: () => FolderNode | null;
   toggleRootEncrypted: (password?: string, hint?: string) => Promise<void>;
   registerBiometric: (password: string) => Promise<boolean>;
+  removeBiometric: () => Promise<boolean>;
   verifyFolderPassword: (folderId: string, password: string) => Promise<boolean>;
   setFolderUnlockTimeout: (folderId: string, timeoutMs: number) => Promise<void>;
   setSortBy: (field: SortField, order: SortOrder) => void;
@@ -561,7 +562,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     try {
       const newTree = cloneTree(state.tree);
       const node = removeNode(newTree, id);
-      if (!node) return;
+      if (!node) { setError('未找到该文件'); return; }
 
       // 文件夹直接移动，无需加解密转换
       if (node.type === 'folder') {
@@ -574,15 +575,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const targetFolder = targetFolderId
         ? (findNode(newTree, targetFolderId) as FolderNode | null)
         : (newTree[0] as FolderNode | null);
-      if (!targetFolder) return;
+      if (!targetFolder) { setError('未找到目标文件夹'); return; }
 
       const sourceEncrypted = !!file.encryptedKey;
       const targetEncrypted = targetFolder.encrypted;
 
       let movedFile: FileNode;
 
-      if (sourceEncrypted === targetEncrypted) {
-        // 加解密状态一致，直接移动
+      if (sourceEncrypted === targetEncrypted || file.origin === 'password-book') {
+        // 加解密状态一致，或密码本保持加密，直接移动
         movedFile = file;
       } else if (sourceEncrypted && !targetEncrypted) {
         // 加密 → 普通：解密后存为明文
@@ -848,6 +849,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [state.vaultFolder, state.webauthnAvailable, setError]);
 
+  // ---- 删除生物识别 ----
+  const removeBiometric = useCallback(async (): Promise<boolean> => {
+    if (!state.vaultFolder) return false;
+    try {
+      await removeWebAuthn(state.vaultFolder);
+      dispatch({ type: 'SET_WEBAUTHN_REGISTERED', payload: false });
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除指纹验证失败');
+      return false;
+    }
+  }, [state.vaultFolder, setError]);
+
   // ---- 内部：验证文件夹密码 ----
   const verifyFolderPasswordInternal = useCallback(async (
     folder: FolderNode,
@@ -985,13 +999,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const targetFolder = targetFolderId
         ? (findNode(newTree, targetFolderId) as FolderNode | null)
         : (newTree[0] as FolderNode | null);
-      if (!targetFolder) return;
+      if (!targetFolder) { setError('未找到目标文件夹'); return; }
 
       const targetEncrypted = targetFolder.encrypted;
 
       for (const id of state.selectedFileIds) {
         const node = removeNode(newTree, id);
-        if (!node) return;
+        if (!node) { setError('未找到该文件'); return; }
 
         // 文件夹直接移动
         if (node.type === 'folder') {
@@ -1005,7 +1019,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
         let movedFile: FileNode;
 
-        if (sameEncryption) {
+        if (sameEncryption || file.origin === 'password-book') {
           movedFile = file;
         } else if (sourceEncrypted && !targetEncrypted) {
           // 加密 → 普通
@@ -1135,7 +1149,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     addFile, createNote, createPasswordBook, deleteNode,
     getFileBlob, exportFile,
     renameNode, moveNode, addFolder, getRootFolder, changeFolderType, changeFolderPassword, toggleRootEncrypted,
-    changePassword, registerBiometric,
+    changePassword, registerBiometric, removeBiometric,
     verifyFolderPassword, setFolderUnlockTimeout,
     setSortBy, setSearchQuery, setFileFilter,
     toggleFileSelection, setSelectedFileIds, batchDelete, batchExport, batchMove,

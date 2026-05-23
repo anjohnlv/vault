@@ -2,7 +2,7 @@
  * 左侧边栏组件
  * 用于 VaultScreen，包含文件夹树、上下文菜单、创建/解密操作和设置面板
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Dropdown, App, message } from 'antd';
 import {
   FolderOutlined,
@@ -15,6 +15,7 @@ import {
   EditOutlined,
   KeyOutlined,
   FileTextOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import { useVault } from '../../context/VaultContext';
@@ -28,16 +29,17 @@ import { VerifyPasswordModal } from '../modals/VerifyPasswordModal';
 import { RenameModal } from '../modals/RenameModal';
 import { TextMimeSettingsModal } from '../modals/TextMimeSettingsModal';
 import type { FolderNode } from '../../types';
-import { findNode } from '../../utils/tree';
+import { findNode, getUniqueName } from '../../utils/tree';
 
 interface SidebarProps {
   onChangePassword: () => void;
   onRegisterBiometric: () => void;
+  onRemoveBiometric: () => void;
   webauthnAvailable: boolean;
   webauthnRegistered: boolean;
 }
 
-export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailable, webauthnRegistered }: SidebarProps) {
+export function Sidebar({ onChangePassword, onRegisterBiometric, onRemoveBiometric, webauthnAvailable, webauthnRegistered }: SidebarProps) {
   const { state, addFolder, deleteNode, changeFolderType, verifyFolderPassword, getRootFolder, renameNode, changeFolderPassword } = useVault();
   const { modal } = App.useApp();
   const [contextTargetId, setContextTargetId] = useState<string | null>(null);
@@ -46,6 +48,7 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderEncrypted, setNewFolderEncrypted] = useState(false);
   const [autoExpandId, setAutoExpandId] = useState<string | null>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [encryptTarget, setEncryptTarget] = useState<FolderNode | null>(null);
   const [decryptTarget, setDecryptTarget] = useState<FolderNode | null>(null);
@@ -56,7 +59,14 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
   const changePwdFolderRef = useRef<FolderNode | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FolderNode | null>(null);
   const [showTextMimeSettings, setShowTextMimeSettings] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
   const [searchMode, setSearchMode] = useState<'folder' | 'file'>('folder');
+
+  useEffect(() => {
+    if (showFolderModal && folderInputRef.current) {
+      folderInputRef.current.select();
+    }
+  }, [showFolderModal]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     const folderEl = (e.target as HTMLElement).closest('[data-folder-id]');
@@ -70,27 +80,24 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
   }, [contextTargetId, state.tree]);
 
   const handleAddSubFolder = useCallback((targetId: string | null) => {
+    const parentId = targetId ?? state.rootId;
+    const defaultName = getUniqueName(state.tree, parentId, '新建文件夹');
     setFolderModalTargetId(targetId);
-    setNewFolderName('');
+    setNewFolderName(defaultName);
     setNewFolderEncrypted(false);
     setShowFolderModal(true);
     setContextTargetId(null);
-  }, []);
+  }, [state.tree, state.rootId]);
 
   const handleCreateSubfolder = useCallback(async (password?: string, hint?: string) => {
     if (!newFolderName.trim()) return;
     const parentId = folderModalTargetId ?? state.rootId;
-    const parent = parentId ? findNode(state.tree, parentId) as FolderNode | null : null;
-    const siblings = parent ? parent.children : [];
-    if (siblings.some((n) => n.type === 'folder' && n.name === newFolderName.trim())) {
-      message.warning('同一层级已存在同名文件夹');
-      return;
-    }
+    const name = getUniqueName(state.tree, parentId, newFolderName.trim());
     if (newFolderEncrypted && !password) {
       setShowSetPwd(true);
       return;
     }
-    await addFolder(newFolderName.trim(), newFolderEncrypted, parentId, password, hint);
+    await addFolder(name, newFolderEncrypted, parentId, password, hint);
     if (folderModalTargetId) {
       setAutoExpandId(folderModalTargetId);
     }
@@ -226,7 +233,7 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
       <Dropdown
         menu={{ items: contextMenuItems }}
         trigger={['contextMenu']}
-        overlayClassName="folder-card-dropdown"
+        classNames={{ root: 'folder-card-dropdown' }}
       >
         <div
           className="sidebar__tree"
@@ -251,6 +258,7 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
             }}
           >
             <Input
+              ref={folderInputRef}
               label="文件夹名称"
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}
@@ -427,6 +435,15 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
                 <SafetyOutlined /> 注册指纹解锁
               </button>
             )}
+            {webauthnAvailable && webauthnRegistered && (
+              <button className="sidebar__settings-item" onClick={onRemoveBiometric}>
+                <SafetyOutlined /> 删除指纹验证
+              </button>
+            )}
+            <div className="sidebar__settings-divider" />
+            <button className="sidebar__settings-item" onClick={() => setShowBackupModal(true)}>
+              <CopyOutlined /> 备份保险箱
+            </button>
           </div>
         </div>
       </div>
@@ -435,6 +452,32 @@ export function Sidebar({ onChangePassword, onRegisterBiometric, webauthnAvailab
         open={showTextMimeSettings}
         onClose={() => setShowTextMimeSettings(false)}
       />
+
+      <Modal
+        open={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
+        title="备份保险箱"
+        width="sm"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
+            请在文件管理器中找到以下文件夹，将其完整复制到备份位置（移动硬盘、网盘等）：
+          </p>
+          <div style={{
+            padding: '10px 12px',
+            background: 'var(--color-surface-raised)',
+            borderRadius: 'var(--radius-sm)',
+            fontSize: 'var(--text-sm)',
+            fontFamily: 'monospace',
+            wordBreak: 'break-all',
+          }}>
+            {state.vaultFolder?.name ?? '未知'}
+          </div>
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-tertiary)' }}>
+            数据仅保存在你的设备上，Vault 不会上传或读取任何文件。恢复时直接选择备份文件夹即可，跨设备通用。
+          </p>
+        </div>
+      </Modal>
     </aside>
   );
 }

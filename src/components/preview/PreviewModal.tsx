@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Input } from 'antd';
+import { Input, Space } from 'antd';
 import { EditOutlined, LockOutlined, FileTextOutlined, FileImageOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { useVault } from '../../context/VaultContext';
 import { Modal } from '../ui/Modal';
@@ -228,17 +228,19 @@ export function PreviewModal() {
         <div className="preview-header">
           <span className="preview-header__icon">{getFileIcon(fileMimeType, fileSize)}</span>
           {editing ? (
-            <Input
-              ref={editInputRef as any}
-              className="preview-header__input"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onPressEnter={confirmRename}
-              onBlur={confirmRename}
-              onKeyDown={(e) => { if (e.key === 'Escape') cancelRename(); }}
-              variant="borderless"
-              size="small"
-              addonAfter={renameLocked && fileExt ? (
+            <Space.Compact style={{ width: '100%' }}>
+              <Input
+                ref={editInputRef as any}
+                className="preview-header__input"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onPressEnter={confirmRename}
+                onBlur={confirmRename}
+                onKeyDown={(e) => { if (e.key === 'Escape') cancelRename(); }}
+                variant="borderless"
+                size="small"
+              />
+              {renameLocked && fileExt && (
                 <span
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleUnlockExt}
@@ -250,13 +252,17 @@ export function PreviewModal() {
                     alignItems: 'center',
                     gap: 4,
                     fontSize: 12,
+                    padding: '0 8px',
+                    background: 'transparent',
+                    border: 'none',
+                    lineHeight: 1,
                   }}
                 >
                   <LockOutlined style={{ fontSize: 10 }} />
                   {fileExt}
                 </span>
-              ) : undefined}
-            />
+              )}
+            </Space.Compact>
           ) : (
             <span className="preview-header__name" onClick={startEditing}>
               {fileName}

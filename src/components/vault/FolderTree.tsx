@@ -20,7 +20,7 @@ import {
 } from '@ant-design/icons';
 import { useVault } from '../../context/VaultContext';
 import type { VaultNode, FolderNode } from '../../types';
-import { findNode } from '../../utils/tree';
+import { getUniqueName } from '../../utils/tree';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -75,12 +75,19 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, search
   const [changePwdSetOpen, setChangePwdSetOpen] = useState(false);
   const changePwdFolderRef = useRef<FolderNode | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FolderNode | null>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (autoExpandId) {
       setExpanded((prev) => ({ ...prev, [autoExpandId]: true }));
     }
   }, [autoExpandId]);
+
+  useEffect(() => {
+    if (showFolderModal && folderInputRef.current) {
+      folderInputRef.current.select();
+    }
+  }, [showFolderModal]);
 
   const searchActive = searchQuery && searchQuery.trim();
 
@@ -199,17 +206,12 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, search
   const handleCreateSubfolder = useCallback(async (password?: string, hint?: string) => {
     if (!newFolderName.trim()) return;
     const parentId = newFolderTargetId ?? state.rootId;
-    const parent = parentId ? findNode(state.tree, parentId) as FolderNode | null : null;
-    const siblings = parent ? parent.children : [];
-    if (siblings.some((n) => n.type === 'folder' && n.name === newFolderName.trim())) {
-      message.warning('同一层级已存在同名文件夹');
-      return;
-    }
+    const name = getUniqueName(state.tree, parentId, newFolderName.trim());
     if (newFolderEncrypted && !password) {
       setShowSetPwd(true);
       return;
     }
-    await addFolder(newFolderName.trim(), newFolderEncrypted, parentId, password, hint);
+    await addFolder(name, newFolderEncrypted, parentId, password, hint);
     if (parentId) {
       setExpanded((prev) => ({ ...prev, [parentId]: true }));
     }
@@ -236,8 +238,9 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, search
         icon: <FolderOutlined />,
         label: '新建文件夹',
         onClick: () => {
+          const defaultName = getUniqueName(state.tree, targetId, '新建文件夹');
           setNewFolderTargetId(targetId);
-          setNewFolderName('');
+          setNewFolderName(defaultName);
           setNewFolderEncrypted(false);
           setShowFolderModal(true);
         },
@@ -323,7 +326,7 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, search
                 <Dropdown
                   menu={{ items: buildMenuItems(null) }}
                   trigger={['click']}
-                  overlayClassName="folder-card-dropdown"
+                  classNames={{ root: 'folder-card-dropdown' }}
                 >
                   <button
                     className="folder-tree__delete"
@@ -372,7 +375,7 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, search
                   <Dropdown
                     menu={{ items: buildMenuItems(folder) }}
                     trigger={['click']}
-                    overlayClassName="folder-card-dropdown"
+                    classNames={{ root: 'folder-card-dropdown' }}
                   >
                     <button
                       className="folder-tree__delete"
@@ -460,6 +463,7 @@ export function FolderTree({ nodes, depth = 0, autoExpandId, searchQuery, search
             }}
           >
             <Input
+              ref={folderInputRef}
               label="文件夹名称"
               value={newFolderName}
               onChange={(e) => setNewFolderName(e.target.value)}

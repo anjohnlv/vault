@@ -33,7 +33,7 @@ export function Modal({
       title={title}
       width={widthMap[width]}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       centered
     >
       {children}

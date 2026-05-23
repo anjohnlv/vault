@@ -69,7 +69,7 @@ export function FolderGrid({
               onClick: (info) => handleMenuClick(folder, info),
             }}
             trigger={['click']}
-            overlayClassName="folder-card-dropdown"
+            classNames={{ root: 'folder-card-dropdown' }}
           >
             <button
               className="folder-card__delete"

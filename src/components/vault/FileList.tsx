@@ -3,7 +3,7 @@
  * 用于 VaultScreen，展示当前文件夹下的文件列表，支持排序、多选、筛选
  */
 import { useState, useMemo } from 'react';
-import { Table, App, Dropdown, Modal, Input } from 'antd';
+import { Table, App, Dropdown, Modal, Input, Space } from 'antd';
 import type { MenuProps, TableColumnsType } from 'antd';
 import {
   FileOutlined,
@@ -257,7 +257,7 @@ export function FileList() {
         <Dropdown
           menu={{ items: getMenuItems(record) }}
           trigger={['click']}
-          overlayClassName="folder-card-dropdown"
+          classNames={{ root: 'folder-card-dropdown' }}
         >
           <button
             className="file-item__btn"
@@ -323,7 +323,7 @@ export function FileList() {
         onCancel={() => setRenameOpen(false)}
         title="重命名"
         footer={null}
-        destroyOnClose
+        destroyOnHidden
         centered
         width={400}
       >
@@ -331,29 +331,37 @@ export function FileList() {
           const ext = getFileExt(renameTarget.name);
           return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Input
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onPressEnter={handleRename}
-                autoFocus
-                addonAfter={!renameUnlocked && ext ? (
+              <Space.Compact style={{ width: '100%' }}>
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onPressEnter={handleRename}
+                  autoFocus
+                />
+                {!renameUnlocked && ext && (
                   <span
                     onClick={handleUnlockExt}
                     title="点击可修改后缀"
                     style={{
-                      color: 'var(--color-text-muted)',
-                      cursor: 'pointer',
-                      padding: '0 4px',
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 4,
+                      padding: '0 11px',
+                      fontSize: 14,
+                      color: 'var(--color-text-muted)',
+                      cursor: 'pointer',
+                      background: 'var(--color-bg-elevated)',
+                      border: '1px solid var(--color-border)',
+                      borderInlineStart: 0,
+                      borderRadius: '0 6px 6px 0',
+                      lineHeight: 1,
                     }}
                   >
                     <LockOutlined style={{ fontSize: 10 }} />
                     {ext}
                   </span>
-                ) : undefined}
-              />
+                )}
+              </Space.Compact>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button
                   onClick={() => setRenameOpen(false)}

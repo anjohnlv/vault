@@ -2,7 +2,7 @@
  * 通用输入框组件
  * 封装 antd Input，统一应用内输入框样式（含 label/error 支持）
  */
-import { Input as AntInput } from 'antd';
+import { Input as AntInput, Space } from 'antd';
 import { forwardRef } from 'react';
 
 interface InputProps {
@@ -34,12 +34,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
-        {type === 'password' && !suffix ? (
+        {type === 'password' && !suffix && !addonAfter ? (
           <AntInput.Password
             ref={ref as any}
             status={error ? 'error' : undefined}
             {...(props as any)}
           />
+        ) : addonAfter ? (
+          <Space.Compact style={{ width: '100%' }}>
+            <AntInput
+              ref={ref}
+              type={type}
+              status={error ? 'error' : undefined}
+              suffix={suffix}
+              {...(props as any)}
+            />
+            {addonAfter}
+          </Space.Compact>
         ) : (
           <AntInput
             ref={ref}
