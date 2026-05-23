@@ -109,9 +109,25 @@ export async function readIndex(
       version: parsed.version,
       tree: treeFromSerializable(parsed.tree ?? []),
       rootId: parsed.rootId,
+      passwordHint: parsed.passwordHint,
     };
   } catch {
     return null;
+  }
+}
+
+/** 仅读取主密码提示（无需 masterKey，index.json 为明文） */
+export async function readPasswordHint(
+  vaultHandle: FileSystemDirectoryHandle,
+): Promise<string | undefined> {
+  try {
+    const metaDir = await getMetaDir(vaultHandle);
+    const raw = await readVaultFile(metaDir, INDEX_FILE);
+    const json = new TextDecoder().decode(raw);
+    const parsed = JSON.parse(json);
+    return parsed.passwordHint;
+  } catch {
+    return undefined;
   }
 }
 
@@ -128,6 +144,7 @@ export async function writeIndex(
       tree: treeToSerializable(index.tree),
     };
     if (index.rootId) payload.rootId = index.rootId;
+    if (index.passwordHint) payload.passwordHint = index.passwordHint;
     const json = new TextEncoder().encode(JSON.stringify(payload));
     await writeVaultFile(metaDir, INDEX_FILE, json.buffer);
     return true;

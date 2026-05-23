@@ -2,8 +2,7 @@
  * 选择保险箱目录入口组件
  * 用于 UnlockScreen，提供"打开保险箱目录"按钮
  */
-import type { MouseEvent } from 'react';
-import { LogoIcon } from '../ui/LogoIcon';
+import { AuthCard } from './AuthCard';
 
 interface FolderSelectorProps {
   onSelectFolder: () => void;
@@ -16,34 +15,17 @@ export function FolderSelector({
   loading,
   error,
 }: FolderSelectorProps) {
-  const handleClick = (e: MouseEvent) => {
-    e.preventDefault();
-    onSelectFolder();
-  };
-
   return (
-    <div className="folder-selector">
-      <div className="folder-selector__glow" />
-
-      <LogoIcon size={80} />
-
-      <h2 className="folder-selector__title">Vault</h2>
-      <p className="folder-selector__subtitle">你的私人空间，完全由你掌控</p>
-
+    <AuthCard title="Vault" subtitle="本地加密保险箱">
       <button
-        className="folder-selector__btn"
-        onClick={handleClick}
+        className="auth-card__cta"
+        onClick={onSelectFolder}
         disabled={loading}
-        type="button"
       >
-        <span className="folder-selector__btn-plus">+</span>
+        <span className="auth-card__cta-plus">+</span>
         新建保险箱
       </button>
-
       {error && <p className="form-error">{error}</p>}
-
-      <div className="folder-selector__line folder-selector__line--top" />
-      <div className="folder-selector__line folder-selector__line--bottom" />
-    </div>
+    </AuthCard>
   );
 }

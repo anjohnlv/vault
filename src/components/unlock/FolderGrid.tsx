@@ -54,36 +54,34 @@ export function FolderGrid({
   };
 
   return (
-    <div className="home-content">
-      <div className="folder-grid">
-        {recentFolders.map((folder) => (
-          <div
-            key={folder.id}
-            className="folder-card"
-            onClick={() => {
-              if (!loading) onOpenRecent(folder);
+    <div className="folder-grid">
+      {recentFolders.map((folder) => (
+        <div
+          key={folder.id}
+          className="folder-card"
+          onClick={() => {
+            if (!loading) onOpenRecent(folder);
+          }}
+        >
+          <Dropdown
+            menu={{
+              items: menuItems,
+              onClick: (info) => handleMenuClick(folder, info),
             }}
+            trigger={['click']}
+            overlayClassName="folder-card-dropdown"
           >
-            <Dropdown
-              menu={{
-                items: menuItems,
-                onClick: (info) => handleMenuClick(folder, info),
-              }}
-              trigger={['click']}
-              overlayClassName="folder-card-dropdown"
+            <button
+              className="folder-card__delete"
+              onClick={(e) => e.stopPropagation()}
             >
-              <button
-                className="folder-card__delete"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreOutlined />
-              </button>
-            </Dropdown>
-            <span className="folder-card__icon"><FolderOutlined /></span>
-            <span className="folder-card__name">{folder.name}</span>
-          </div>
-        ))}
-      </div>
+              <MoreOutlined />
+            </button>
+          </Dropdown>
+          <span className="folder-card__icon"><FolderOutlined /></span>
+          <span className="folder-card__name">{folder.name}</span>
+        </div>
+      ))}
     </div>
   );
 }

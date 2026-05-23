@@ -132,7 +132,7 @@ function vaultReducer(state: VaultState, action: VaultAction): VaultState {
 
 interface VaultContextValue {
   state: VaultState;
-  init: (folder: FileSystemDirectoryHandle, password: string) => Promise<void>;
+  init: (folder: FileSystemDirectoryHandle, password: string, hint?: string) => Promise<void>;
   unlock: (folder: FileSystemDirectoryHandle, password: string) => Promise<boolean>;
   unlockWithWebAuthn: (folder: FileSystemDirectoryHandle) => Promise<boolean>;
   lock: () => void;
@@ -190,7 +190,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const setLoading = useCallback((v: boolean) => dispatch({ type: 'SET_LOADING', payload: v }), []);
 
   // ---- 初始化保险箱 ----
-  const init = useCallback(async (folder: FileSystemDirectoryHandle, password: string) => {
+  const init = useCallback(async (folder: FileSystemDirectoryHandle, password: string, hint?: string) => {
     setLoading(true);
     setError(null);
     try {
@@ -211,7 +211,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         id: rootId, name: '保险箱', type: 'folder',
         encrypted: false, createdAt: Date.now(), children: [],
       };
-      const emptyIndex: VaultIndex = { version: 3, tree: [rootFolder], rootId };
+      const emptyIndex: VaultIndex = { version: 3, tree: [rootFolder], rootId, passwordHint: hint };
       await writeIndexInitial(folder, emptyIndex, masterKey);
 
       masterKeyRef.current = masterKey;

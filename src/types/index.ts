@@ -66,6 +66,8 @@ export interface VaultIndex {
   tree: VaultNode[];
   /** v3+：根文件夹 ID，tree[0] 总是根文件夹节点 */
   rootId?: string;
+  /** 主密码提示（明文，仅在忘记密码时显示） */
+  passwordHint?: string;
 }
 
 /** WebAuthn 认证数据 */
