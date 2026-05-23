@@ -18,11 +18,11 @@ import {
   LockOutlined,
   FolderOutlined,
 } from '@ant-design/icons';
-import { useVault } from '../../context/VaultContext';
-import type { VaultNode, FileNode, FolderNode } from '../../types';
-import { formatFileSize, formatDate } from '../../utils/format';
-import { IMAGE_MIME_TYPES, PDF_MIME_TYPE } from '../../utils/constants';
-import { isTextFileName } from '../../utils/textMimeTypes';
+import { useVault } from '../../../core/context/VaultContext';
+import type { VaultNode, FileNode, FolderNode } from '../../../core/types';
+import { formatFileSize, formatDate } from '../../../core/utils/format';
+import { IMAGE_MIME_TYPES, PDF_MIME_TYPE } from '../../../core/utils/constants';
+import { isTextFileName } from '../../../core/utils/textMimeTypes';
 import { MoveFileModal } from '../modals/MoveFileModal';
 
 function getFileIcon(mimeType: string): React.ReactNode {

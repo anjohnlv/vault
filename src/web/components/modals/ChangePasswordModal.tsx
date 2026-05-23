@@ -6,7 +6,7 @@ import { useState, type FormEvent } from 'react';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 
 interface Props {
   open: boolean;

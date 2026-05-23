@@ -9,7 +9,7 @@ import {
   setTextExtensions,
   resetTextExtensions,
   DEFAULT_TEXT_EXTENSIONS,
-} from '../../utils/textMimeTypes';
+} from '../../../core/utils/textMimeTypes';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 

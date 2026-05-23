@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react';
 import { ConfigProvider, theme, App as AntApp, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { VaultProvider } from './context/VaultContext';
+import { VaultProvider } from '../core/context/VaultContext';
 import { UnlockScreen } from './components/unlock/UnlockScreen';
 import { LockScreen } from './components/unlock/LockScreen';
 import { VaultScreen } from './components/vault/VaultScreen';
-import { useVault } from './context/VaultContext';
-import { verifyPermission } from './storage/directory';
+import { useVault } from '../core/context/VaultContext';
+import { verifyPermission } from '../core/storage/directory';
 import {
   getRecentFolders,
   getLastOpenedVault,
   type RecentFolder,
-} from './storage/recentFolders';
+} from '../core/storage/recentFolders';
 
 interface LockTarget {
   handle: FileSystemDirectoryHandle;

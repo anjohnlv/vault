@@ -6,8 +6,8 @@ import { useMemo, useState } from 'react';
 import { Modal, Tree, Input } from 'antd';
 import { FolderOutlined } from '@ant-design/icons';
 import type { TreeDataNode } from 'antd';
-import { useVault } from '../../context/VaultContext';
-import type { VaultNode } from '../../types';
+import { useVault } from '../../../core/context/VaultContext';
+import type { VaultNode } from '../../../core/types';
 
 interface Props {
   open: boolean;

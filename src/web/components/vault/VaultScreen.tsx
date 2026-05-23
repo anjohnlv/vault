@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { App } from 'antd';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 import { Sidebar } from './Sidebar';
 import { FileList } from './FileList';
 import { Toolbar } from './Toolbar';

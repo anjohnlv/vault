@@ -18,7 +18,7 @@ import {
   CopyOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 import { SearchBar } from './SearchBar';
 import { FolderTree } from './FolderTree';
 import { Modal } from '../ui/Modal';
@@ -28,8 +28,8 @@ import { SetPasswordModal } from '../modals/SetPasswordModal';
 import { VerifyPasswordModal } from '../modals/VerifyPasswordModal';
 import { RenameModal } from '../modals/RenameModal';
 import { TextMimeSettingsModal } from '../modals/TextMimeSettingsModal';
-import type { FolderNode } from '../../types';
-import { findNode, getUniqueName } from '../../utils/tree';
+import type { FolderNode } from '../../../core/types';
+import { findNode, getUniqueName } from '../../../core/utils/tree';
 
 interface SidebarProps {
   onChangePassword: () => void;

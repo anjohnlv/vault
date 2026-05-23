@@ -5,7 +5,7 @@
 import { Dropdown, App } from 'antd';
 import type { MenuProps } from 'antd';
 import { FolderOutlined, DeleteOutlined, MoreOutlined } from '@ant-design/icons';
-import type { RecentFolder } from '../../storage/recentFolders';
+import type { RecentFolder } from '../../../core/storage/recentFolders';
 
 interface FolderGridProps {
   recentFolders: RecentFolder[];

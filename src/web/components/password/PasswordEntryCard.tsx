@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons';
 import { Input, Button, Popconfirm } from 'antd';
 import { useToast } from '../ui/Toast';
-import type { PasswordEntry } from '../../types';
+import type { PasswordEntry } from '../../../core/types';
 
 interface Props {
   entry: PasswordEntry;

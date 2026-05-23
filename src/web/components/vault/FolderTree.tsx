@@ -18,9 +18,9 @@ import {
   KeyOutlined,
   MoreOutlined,
 } from '@ant-design/icons';
-import { useVault } from '../../context/VaultContext';
-import type { VaultNode, FolderNode } from '../../types';
-import { getUniqueName } from '../../utils/tree';
+import { useVault } from '../../../core/context/VaultContext';
+import type { VaultNode, FolderNode } from '../../../core/types';
+import { getUniqueName } from '../../../core/utils/tree';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';

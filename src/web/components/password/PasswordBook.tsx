@@ -6,9 +6,9 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Input as AntInput, Button } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { LockOutlined } from '@ant-design/icons';
-import type { PasswordEntry } from '../../types';
+import type { PasswordEntry } from '../../../core/types';
 import { PasswordEntryCard } from './PasswordEntryCard';
-import { generateUUID } from '../../utils/format';
+import { generateUUID } from '../../../core/utils/format';
 
 interface Props {
   entries: PasswordEntry[];

@@ -3,7 +3,7 @@
  * 用于 VaultScreen，显示保险箱名称和锁定按钮
  */
 import { LockOutlined, UnlockOutlined } from '@ant-design/icons';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 import { LogoIcon } from '../ui/LogoIcon';
 
 export function Header() {

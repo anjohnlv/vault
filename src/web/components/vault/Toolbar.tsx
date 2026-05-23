@@ -3,7 +3,7 @@
  * 用于 VaultScreen，提供导入文件、新建文件/笔记/密码本、搜索当前文件夹文件等操作
  */
 import { useMemo, useState } from 'react';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 import { Tooltip } from 'antd';
 import {
   UploadOutlined,
@@ -12,8 +12,8 @@ import {
   SearchOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
-import { findNode } from '../../utils/tree';
-import type { FolderNode } from '../../types';
+import { findNode } from '../../../core/utils/tree';
+import type { FolderNode } from '../../../core/types';
 
 interface ToolbarProps {
   onAddFile: (handle: FileSystemFileHandle) => void;

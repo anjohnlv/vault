@@ -4,7 +4,7 @@
  */
 import { useState } from 'react';
 import { App } from 'antd';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 import { Button } from '../ui/Button';
 import { MoveFileModal } from '../modals/MoveFileModal';
 

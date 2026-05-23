@@ -2,7 +2,7 @@
  * 侧栏搜索栏组件
  * 用于 Sidebar，支持切换搜索模式：文件夹名搜索 / 文件名搜索
  */
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 
 interface SearchBarProps {
   searchMode: 'folder' | 'file';

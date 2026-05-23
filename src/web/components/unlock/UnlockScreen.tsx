@@ -4,23 +4,23 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { message } from 'antd';
-import { useVault } from '../../context/VaultContext';
-import { useFileSystem } from '../../hooks/useFileSystem';
+import { useVault } from '../../../core/context/VaultContext';
+import { useFileSystem } from '../../../core/hooks/useFileSystem';
 import { FolderSelector } from './FolderSelector';
 import { FolderGrid } from './FolderGrid';
 import { PasswordForm } from './PasswordForm';
 import { WebAuthnPrompt } from './WebAuthnPrompt';
 import { AuthCard } from './AuthCard';
 import { LogoIcon } from '../ui/LogoIcon';
-import { isValidVault, verifyPermission } from '../../storage/directory';
-import { readPasswordHint } from '../../storage/indexFile';
+import { isValidVault, verifyPermission } from '../../../core/storage/directory';
+import { readPasswordHint } from '../../../core/storage/indexFile';
 import {
   getRecentFolders,
   upsertRecentFolder,
   removeRecentFolder,
   setLastOpenedVault,
   type RecentFolder,
-} from '../../storage/recentFolders';
+} from '../../../core/storage/recentFolders';
 
 export function UnlockScreen() {
   const { init, unlock, unlockWithWebAuthn } = useVault();

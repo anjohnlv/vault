@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useVault } from '../../context/VaultContext';
-import { isPlatformAuthAvailable, hasWebAuthn } from '../../auth/webauthn';
-import { clearLastOpenedVault } from '../../storage/recentFolders';
-import { readPasswordHint } from '../../storage/indexFile';
+import { useVault } from '../../../core/context/VaultContext';
+import { isPlatformAuthAvailable, hasWebAuthn } from '../../../core/auth/webauthn';
+import { clearLastOpenedVault } from '../../../core/storage/recentFolders';
+import { readPasswordHint } from '../../../core/storage/indexFile';
 import { AuthCard } from './AuthCard';
 import { PasswordForm } from './PasswordForm';
 

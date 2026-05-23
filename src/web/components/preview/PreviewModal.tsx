@@ -1,17 +1,17 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Input, Space } from 'antd';
 import { EditOutlined, LockOutlined, FileTextOutlined, FileImageOutlined, FilePdfOutlined } from '@ant-design/icons';
-import { useVault } from '../../context/VaultContext';
+import { useVault } from '../../../core/context/VaultContext';
 import { Modal } from '../ui/Modal';
 import { ImagePreview } from './ImagePreview';
 import { PdfPreview } from './PdfPreview';
 import { NoteEditor } from './NoteEditor';
 import { PasswordBook } from '../password/PasswordBook';
-import { IMAGE_MIME_TYPES, PDF_MIME_TYPE } from '../../utils/constants';
-import { isTextFileName } from '../../utils/textMimeTypes';
-import { findNode } from '../../utils/tree';
+import { IMAGE_MIME_TYPES, PDF_MIME_TYPE } from '../../../core/utils/constants';
+import { isTextFileName } from '../../../core/utils/textMimeTypes';
+import { findNode } from '../../../core/utils/tree';
 
-import type { PasswordEntry, FileNode } from '../../types';
+import type { PasswordEntry, FileNode } from '../../../core/types';
 
 function getFileIcon(mimeType: string, size: number) {
   if (mimeType.startsWith('image/')) return <FileImageOutlined />;
