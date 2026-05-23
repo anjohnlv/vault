@@ -1,0 +1,11 @@
+node_modules
+dist
+*.tsbuildinfo
+.DS_Store
+*.local
+.claude
+.sisyphus
+.superpowers
+docs
+AGENTS.md
+CLAUDE.md
