@@ -1,6 +1,7 @@
 import { CRYPTO_PARAMS } from '../utils/constants';
 import { readAuthData, writeAuthData } from '../storage/authFile';
 import type { AuthData } from '../types';
+import type { VaultStorageProvider } from '../storage/provider';
 
 /** PRF 盐值长度（字节） */
 
@@ -147,7 +148,7 @@ export async function registerWebAuthn(): Promise<{
  * 注册后调用：用 credentialId + prfSalt 认证 → 获取 prfKey → 加密主密码 → 存入 auth.enc
  */
 export async function encryptWithWebAuthn(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   credentialId: string,
   prfSalt: Uint8Array,
   masterPassword: string,
@@ -155,11 +156,9 @@ export async function encryptWithWebAuthn(
   const encoder = new TextEncoder();
   const passwordData = encoder.encode(masterPassword);
 
-  // 用 WebAuthn PRF 获取 prfKey
   const prfResult = await getPrfResult(credentialId, prfSalt);
   const prfKey = await importPrfKey(prfResult);
 
-  // 用 prfKey 加密主密码
   const iv = crypto.getRandomValues(new Uint8Array(CRYPTO_PARAMS.IV_LENGTH));
   const encryptedPassword = await crypto.subtle.encrypt(
     { name: CRYPTO_PARAMS.AES_MODE, iv },
@@ -167,13 +166,12 @@ export async function encryptWithWebAuthn(
     passwordData,
   );
 
-  // 写入 auth.enc
   const authData: AuthData = {
     encryptedPassword,
     iv,
     credentialId,
   };
-  await writeAuthData(vaultHandle, authData, prfKey);
+  await writeAuthData(provider, authData, prfKey);
 }
 
 /**
@@ -183,32 +181,23 @@ export async function encryptWithWebAuthn(
  * @returns 主密码字符串，失败返回 null
  */
 export async function decryptWithWebAuthn(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
 ): Promise<string | null> {
   try {
-    // 先读取 credentialId（auth.enc 中存储了 credentialId）
-    // 但 auth.enc 是用 prfKey 加密的... 这就鸡生蛋了
-    // 所以 credentialId 和 prfSalt 需要单独存储，不用加密
-    // 修正：credentialId 明文存储，prfSalt 明文存储
-    // 只有 encryptedPassword 用 prfKey 加密
+    const credentialIdRaw = await readMetaFile(provider, 'credential_id');
+    const prfSaltBase64 = await readMetaFile(provider, 'prf_salt');
 
-    // 读取 credentialId 和 prfSalt（明文存储）
-    const credentialId = await readPlainFile(vaultHandle, 'credential_id');
-    const prfSaltBase64 = await readPlainFile(vaultHandle, 'prf_salt');
+    if (!credentialIdRaw || !prfSaltBase64) return null;
 
-    if (!credentialId || !prfSaltBase64) return null;
+    const credentialId = credentialIdRaw.trim();
+    const prfSalt = base64ToBytes(prfSaltBase64.trim());
 
-    const prfSalt = base64ToBytes(prfSaltBase64);
-
-    // PRF 认证 → 获取 prfKey
     const prfResult = await getPrfResult(credentialId, prfSalt);
     const prfKey = await importPrfKey(prfResult);
 
-    // 用 prfKey 解密 auth.enc
-    const authData = await readAuthData(vaultHandle, prfKey);
+    const authData = await readAuthData(provider, prfKey);
     if (!authData) return null;
 
-    // 解密主密码
     const passwordData = await crypto.subtle.decrypt(
       { name: CRYPTO_PARAMS.AES_MODE, iv: authData.iv },
       prfKey,
@@ -264,73 +253,38 @@ async function getPrfResult(
   return prfResult.results.first as ArrayBuffer;
 }
 
-/**
- * 读取明文文件内容
- */
-async function readPlainFile(
-  vaultHandle: FileSystemDirectoryHandle,
-  filename: string,
-): Promise<string | null> {
+async function readMetaFile(provider: VaultStorageProvider, filename: string): Promise<string | null> {
   try {
-    const metaDir = await vaultHandle.getDirectoryHandle('.vault_meta');
-    const fileHandle = await metaDir.getFileHandle(filename);
-    const file = await fileHandle.getFile();
-    return file.text();
+    const raw = await provider.readFile(`.vault_meta/${filename}`);
+    return new TextDecoder().decode(raw);
   } catch {
     return null;
   }
 }
 
-/**
- * 写入明文文件
- */
-async function writePlainFile(
-  vaultHandle: FileSystemDirectoryHandle,
-  filename: string,
-  content: string,
-): Promise<void> {
-  const metaDir = await vaultHandle.getDirectoryHandle('.vault_meta');
-  const fileHandle = await metaDir.getFileHandle(filename, { create: true });
-  const writable = await fileHandle.createWritable();
-  await writable.write(content);
-  await writable.close();
+async function writeMetaFile(provider: VaultStorageProvider, filename: string, content: string): Promise<void> {
+  await provider.writeFile(`.vault_meta/${filename}`, new TextEncoder().encode(content).buffer);
 }
 
-/**
- * 存储 WebAuthn 注册信息（credentialId + prfSalt 明文存储）
- */
 export async function saveWebAuthnInfo(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   credentialId: string,
   prfSalt: Uint8Array,
 ): Promise<void> {
-  await writePlainFile(vaultHandle, 'credential_id', credentialId);
-  await writePlainFile(vaultHandle, 'prf_salt', bytesToBase64(prfSalt));
+  await writeMetaFile(provider, 'credential_id', credentialId);
+  await writeMetaFile(provider, 'prf_salt', bytesToBase64(prfSalt));
 }
 
-/**
- * 检查是否已注册 WebAuthn
- */
 export async function hasWebAuthn(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
 ): Promise<boolean> {
-  try {
-    const metaDir = await vaultHandle.getDirectoryHandle('.vault_meta');
-    await metaDir.getFileHandle('credential_id');
-    return true;
-  } catch {
-    return false;
-  }
+  return provider.fileExists('.vault_meta/credential_id');
 }
 
-/**
- * 删除 WebAuthn 注册信息
- */
 export async function removeWebAuthn(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
 ): Promise<void> {
-  const metaDir = await vaultHandle.getDirectoryHandle('.vault_meta');
-  try { await metaDir.removeEntry('credential_id'); } catch { /* ignore */ }
-  try { await metaDir.removeEntry('prf_salt'); } catch { /* ignore */ }
-  try { await metaDir.removeEntry('auth.enc'); } catch { /* ignore */ }
+  try { await provider.deleteFile('.vault_meta/credential_id'); } catch { /* ignore */ }
+  try { await provider.deleteFile('.vault_meta/prf_salt'); } catch { /* ignore */ }
+  try { await provider.deleteFile('.vault_meta/auth.enc'); } catch { /* ignore */ }
 }

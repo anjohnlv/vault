@@ -24,7 +24,6 @@ import { deriveMasterKey, generateSalt, derivePasswordHash } from '../crypto/der
 import { generateFileKey } from '../crypto/generateKey';
 import { wrapFileKey, encryptPasswordHash } from '../crypto/encrypt';
 import { unwrapFileKey, decryptPasswordHash } from '../crypto/decrypt';
-import { createVaultStructure, getMetaDir } from '../storage/directory';
 import { readIndex, writeIndex, writeIndexInitial } from '../storage/indexFile';
 import {
   storeEncryptedFile,
@@ -35,6 +34,7 @@ import {
   deletePlainFile,
   moveFileToPlain,
 } from '../storage/fileStorage';
+import type { VaultStorageProvider } from '../storage/provider';
 import { isPlatformAuthAvailable, registerWebAuthn, saveWebAuthnInfo, hasWebAuthn, encryptWithWebAuthn, decryptWithWebAuthn, removeWebAuthn } from '../auth/webauthn';
 import { findNode, findParent, removeNode, insertNode, searchNodes, getUniqueName, getSiblingNames } from '../utils/tree';
 import { cloneTree } from '../utils/clone';
@@ -43,7 +43,8 @@ import { cloneTree } from '../utils/clone';
 
 interface VaultState {
   status: VaultStatus;
-  vaultFolder: FileSystemDirectoryHandle | null;
+  vaultFolder: VaultStorageProvider | null;
+  vaultName: string;
   tree: VaultNode[];
   rootId: string;
   folderAccess: Record<string, number>;    // folderId → expiresAt
@@ -63,7 +64,8 @@ interface VaultState {
 
 type VaultAction =
   | { type: 'SET_STATUS'; payload: VaultStatus }
-  | { type: 'SET_FOLDER'; payload: FileSystemDirectoryHandle | null }
+  | { type: 'SET_FOLDER'; payload: VaultStorageProvider | null }
+  | { type: 'SET_VAULT_NAME'; payload: string }
   | { type: 'SET_TREE'; payload: VaultNode[] }
   | { type: 'SET_ROOT_ID'; payload: string }
   | { type: 'SET_FOLDER_ACCESS'; payload: Record<string, number> }
@@ -83,6 +85,7 @@ type VaultAction =
 const initialState: VaultState = {
   status: 'uninitialized',
   vaultFolder: null,
+  vaultName: '',
   tree: [],
   rootId: '',
   folderAccess: {},
@@ -104,6 +107,7 @@ function vaultReducer(state: VaultState, action: VaultAction): VaultState {
   switch (action.type) {
     case 'SET_STATUS': return { ...state, status: action.payload };
     case 'SET_FOLDER': return { ...state, vaultFolder: action.payload };
+    case 'SET_VAULT_NAME': return { ...state, vaultName: action.payload };
     case 'SET_TREE': return { ...state, tree: action.payload };
     case 'SET_ROOT_ID': return { ...state, rootId: action.payload };
     case 'SET_FOLDER_ACCESS': return { ...state, folderAccess: action.payload };
@@ -132,11 +136,12 @@ function vaultReducer(state: VaultState, action: VaultAction): VaultState {
 
 interface VaultContextValue {
   state: VaultState;
-  init: (folder: FileSystemDirectoryHandle, password: string, hint?: string) => Promise<void>;
-  unlock: (folder: FileSystemDirectoryHandle, password: string) => Promise<boolean>;
-  unlockWithWebAuthn: (folder: FileSystemDirectoryHandle) => Promise<boolean>;
+  init: (folder: VaultStorageProvider, vaultName: string, password: string, hint?: string) => Promise<void>;
+  unlock: (folder: VaultStorageProvider, vaultName: string, password: string) => Promise<boolean>;
+  unlockWithWebAuthn: (folder: VaultStorageProvider, vaultName: string) => Promise<boolean>;
   lock: () => void;
   addFile: (handle: FileSystemFileHandle) => Promise<void>;
+importFile: (file: File) => Promise<void>;
   createNote: (name: string, parentId: string | null) => Promise<void>;
   createPasswordBook: (
     name: string,
@@ -191,20 +196,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const setLoading = useCallback((v: boolean) => dispatch({ type: 'SET_LOADING', payload: v }), []);
 
   // ---- 初始化保险箱 ----
-  const init = useCallback(async (folder: FileSystemDirectoryHandle, password: string, hint?: string) => {
+  const init = useCallback(async (folder: VaultStorageProvider, vaultName: string, password: string, hint?: string) => {
     setLoading(true);
     setError(null);
     try {
       const salt = generateSalt();
       const masterKey = await deriveMasterKey(password, salt.buffer);
-      await createVaultStructure(folder);
+      await folder.createStructure();
 
       // 写入 salt
-      const metaDir = await getMetaDir(folder);
-      const saltHandle = await metaDir.getFileHandle('salt', { create: true });
-      const sw = await saltHandle.createWritable();
-      await sw.write(btoa(String.fromCharCode(...salt)));
-      await sw.close();
+      const saltBase64 = btoa(String.fromCharCode(...salt));
+      await folder.writeFile('.vault_meta/salt', new TextEncoder().encode(saltBase64).buffer);
 
       // 写入空索引
       const rootId = generateUUID();
@@ -217,6 +219,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
       masterKeyRef.current = masterKey;
       dispatch({ type: 'SET_FOLDER', payload: folder });
+      dispatch({ type: 'SET_VAULT_NAME', payload: vaultName });
       dispatch({ type: 'SET_TREE', payload: [rootFolder] });
       dispatch({ type: 'SET_ROOT_ID', payload: rootId });
       dispatch({ type: 'SET_STATUS', payload: 'unlocked' });
@@ -234,17 +237,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   // ---- 解锁保险箱（手动密码） ----
   const unlock = useCallback(async (
-    folder: FileSystemDirectoryHandle,
+    folder: VaultStorageProvider,
+    vaultName: string,
     password: string,
   ): Promise<boolean> => {
     setLoading(true);
     setError(null);
     try {
       // 读取 salt
-      const metaDir = await getMetaDir(folder);
-      const saltHandle = await metaDir.getFileHandle('salt');
-      const saltFile = await saltHandle.getFile();
-      const saltBase64 = await saltFile.text();
+      const saltRaw = await folder.readFile('.vault_meta/salt');
+      const saltBase64 = new TextDecoder().decode(saltRaw);
       const saltBinary = atob(saltBase64);
       const salt = new Uint8Array(saltBinary.length);
       for (let i = 0; i < saltBinary.length; i++) salt[i] = saltBinary.charCodeAt(i);
@@ -260,6 +262,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
       masterKeyRef.current = masterKey;
       dispatch({ type: 'SET_FOLDER', payload: folder });
+      dispatch({ type: 'SET_VAULT_NAME', payload: vaultName });
       dispatch({ type: 'SET_TREE', payload: index.tree });
       if (index.rootId) {
         dispatch({ type: 'SET_ROOT_ID', payload: index.rootId });
@@ -284,7 +287,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   // ---- 解锁保险箱（WebAuthn） ----
   const unlockWithWebAuthn = useCallback(async (
-    folder: FileSystemDirectoryHandle,
+    folder: VaultStorageProvider,
+    vaultName: string,
   ): Promise<boolean> => {
     setLoading(true);
     setError(null);
@@ -294,7 +298,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('生物识别验证失败');
         return false;
       }
-      return await unlock(folder, password);
+      return await unlock(folder, vaultName, password);
     } catch {
       setError('生物识别解锁失败');
       return false;
@@ -348,7 +352,56 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         };
       } else {
         const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : '';
-        encPath = await moveFileToPlain(state.vaultFolder, handle, `${id}${ext}`);
+        encPath = await moveFileToPlain(state.vaultFolder, file, `${id}${ext}`);
+        newNode = {
+          id, name: file.name, type: 'file',
+          origin: 'import' as FileOrigin,
+          mimeType: file.type || 'application/octet-stream',
+          size: file.size, createdAt: Date.now(), modifiedAt: file.lastModified,
+          encPath,
+        };
+      }
+
+      const newTree = cloneTree(state.tree);
+      const uniqueName = getUniqueName(newTree, state.currentFolderId, newNode.name);
+      insertNode(newTree, { ...newNode, name: uniqueName }, state.currentFolderId);
+      await saveIndex(newTree);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '添加文件失败');
+    } finally {
+      setLoading(false);
+    }
+  }, [masterKeyRef, state.vaultFolder, state.tree, state.currentFolderId, saveIndex, setError, setLoading]);
+
+  // ---- 导入文件（移动端/通用，接受 File 对象） ----
+  const importFile = useCallback(async (file: File) => {
+    const masterKey = masterKeyRef.current;
+    if (!masterKey || !state.vaultFolder) return;
+    setLoading(true);
+    try {
+      const id = generateUUID();
+      const parent = state.currentFolderId ? (findNode(state.tree, state.currentFolderId) as FolderNode | null) : (state.tree[0] as FolderNode | null);
+      const encrypt = parent ? parent.encrypted : false;
+
+      let encPath: string;
+      let newNode: FileNode;
+
+      if (encrypt) {
+        const fileKey = await generateFileKey();
+        const plaintext = await file.arrayBuffer();
+        const fileIv = await storeEncryptedFile(state.vaultFolder, id, plaintext, fileKey);
+        const { encryptedKey, iv } = await wrapFileKey(fileKey, masterKey);
+        encPath = `data/${id}.enc`;
+        newNode = {
+          id, name: file.name, type: 'file',
+          origin: 'import' as FileOrigin,
+          mimeType: file.type || 'application/octet-stream',
+          size: file.size, createdAt: Date.now(), modifiedAt: file.lastModified,
+          encPath, encryptedKey, iv, fileIv,
+        };
+      } else {
+        const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : '';
+        encPath = await moveFileToPlain(state.vaultFolder, file, `${id}${ext}`);
         newNode = {
           id, name: file.name, type: 'file',
           origin: 'import' as FileOrigin,
@@ -785,10 +838,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
 
       // 读取 salt，派生新密钥
-      const metaDir = await getMetaDir(state.vaultFolder);
-      const saltHandle = await metaDir.getFileHandle('salt');
-      const saltFile = await saltHandle.getFile();
-      const saltBase64 = await saltFile.text();
+      const saltRaw = await state.vaultFolder.readFile('.vault_meta/salt');
+      const saltBase64 = new TextDecoder().decode(saltRaw);
       const saltBinary = atob(saltBase64);
       const salt = new Uint8Array(saltBinary.length);
       for (let i = 0; i < saltBinary.length; i++) salt[i] = saltBinary.charCodeAt(i);
@@ -1146,7 +1197,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const value: VaultContextValue = {
     state,
     init, unlock, unlockWithWebAuthn, lock,
-    addFile, createNote, createPasswordBook, deleteNode,
+    addFile, importFile, createNote, createPasswordBook, deleteNode,
     getFileBlob, exportFile,
     renameNode, moveNode, addFolder, getRootFolder, changeFolderType, changeFolderPassword, toggleRootEncrypted,
     changePassword, registerBiometric, removeBiometric,

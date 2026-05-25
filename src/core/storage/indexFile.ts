@@ -1,7 +1,7 @@
 import type { VaultIndex, VaultNode, FileNode, FolderNode } from '../types';
-import { INDEX_FILE } from '../utils/constants';
+import { INDEX_FILE, VAULT_META_DIR } from '../utils/constants';
 import { generateUUID } from '../utils/format';
-import { writeVaultFile, readVaultFile, getMetaDir } from './directory';
+import type { VaultStorageProvider } from './provider';
 
 const B64_PREFIX = '__b64:';
 
@@ -75,7 +75,6 @@ function treeFromSerializable(data: unknown[]): VaultNode[] {
   });
 }
 
-/** v1/v2 → v3：将顶层节点包裹进根文件夹节点 */
 function migrateToV3(parsed: Record<string, unknown>): VaultIndex {
   const tree = treeFromSerializable((parsed.tree as unknown[]) || []);
   const rootEncrypted = (parsed.rootEncrypted as boolean) ?? false;
@@ -91,14 +90,15 @@ function migrateToV3(parsed: Record<string, unknown>): VaultIndex {
   return { version: 3, rootId, tree: [rootFolder] };
 }
 
+const INDEX_PATH = `${VAULT_META_DIR}/${INDEX_FILE}`;
+
 export async function readIndex(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   masterKey: CryptoKey,
 ): Promise<VaultIndex | null> {
   void masterKey;
   try {
-    const metaDir = await getMetaDir(vaultHandle);
-    const raw = await readVaultFile(metaDir, INDEX_FILE);
+    const raw = await provider.readFile(INDEX_PATH);
     const json = new TextDecoder().decode(raw);
     const parsed = JSON.parse(json);
     const version = parsed.version ?? 1;
@@ -116,13 +116,11 @@ export async function readIndex(
   }
 }
 
-/** 仅读取主密码提示（无需 masterKey，index.json 为明文） */
 export async function readPasswordHint(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
 ): Promise<string | undefined> {
   try {
-    const metaDir = await getMetaDir(vaultHandle);
-    const raw = await readVaultFile(metaDir, INDEX_FILE);
+    const raw = await provider.readFile(INDEX_PATH);
     const json = new TextDecoder().decode(raw);
     const parsed = JSON.parse(json);
     return parsed.passwordHint;
@@ -132,13 +130,12 @@ export async function readPasswordHint(
 }
 
 export async function writeIndex(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   index: VaultIndex,
   masterKey: CryptoKey,
 ): Promise<boolean> {
   void masterKey;
   try {
-    const metaDir = await getMetaDir(vaultHandle);
     const payload: Record<string, unknown> = {
       version: index.version,
       tree: treeToSerializable(index.tree),
@@ -146,7 +143,7 @@ export async function writeIndex(
     if (index.rootId) payload.rootId = index.rootId;
     if (index.passwordHint) payload.passwordHint = index.passwordHint;
     const json = new TextEncoder().encode(JSON.stringify(payload));
-    await writeVaultFile(metaDir, INDEX_FILE, json.buffer);
+    await provider.writeFile(INDEX_PATH, json.buffer);
     return true;
   } catch (err) {
     console.error('写入索引失败:', err);
@@ -155,9 +152,9 @@ export async function writeIndex(
 }
 
 export async function writeIndexInitial(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   index: VaultIndex,
   masterKey: CryptoKey,
 ): Promise<boolean> {
-  return writeIndex(vaultHandle, index, masterKey);
+  return writeIndex(provider, index, masterKey);
 }

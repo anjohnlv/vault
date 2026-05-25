@@ -1,20 +1,16 @@
 import type { AuthData } from '../types';
-import { AUTH_FILE } from '../utils/constants';
+import { AUTH_FILE, VAULT_META_DIR } from '../utils/constants';
 import { encryptData, decryptData } from '../crypto';
 import { generateIV } from '../crypto/generateKey';
-import { readVaultFile, writeVaultFile, getMetaDir } from './directory';
+import type { VaultStorageProvider } from './provider';
 
-/**
- * 写入加密的 WebAuthn 认证数据
- * 用 PRF 派生的对称密钥加密 AuthData
- */
+const AUTH_PATH = `${VAULT_META_DIR}/${AUTH_FILE}`;
+
 export async function writeAuthData(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   authData: AuthData,
   prfKey: CryptoKey,
 ): Promise<void> {
-  const metaDir = await getMetaDir(vaultHandle);
-
   const json = JSON.stringify({
     encryptedPassword: arrayBufferToBase64(authData.encryptedPassword),
     iv: arrayBufferToBase64(authData.iv.buffer),
@@ -25,25 +21,19 @@ export async function writeAuthData(
   const plaintext = new TextEncoder().encode(json);
   const ciphertext = await encryptData(plaintext, prfKey, iv);
 
-  // IV + 密文
   const output = new Uint8Array(iv.length + ciphertext.byteLength);
   output.set(iv);
   output.set(new Uint8Array(ciphertext), iv.length);
 
-  await writeVaultFile(metaDir, AUTH_FILE, output.buffer);
+  await provider.writeFile(AUTH_PATH, output.buffer);
 }
 
-/**
- * 读取并解密 WebAuthn 认证数据
- */
 export async function readAuthData(
-  vaultHandle: FileSystemDirectoryHandle,
+  provider: VaultStorageProvider,
   prfKey: CryptoKey,
 ): Promise<AuthData | null> {
   try {
-    const metaDir = await getMetaDir(vaultHandle);
-    const path = `${AUTH_FILE}`;
-    const raw = await readVaultFile(metaDir, path);
+    const raw = await provider.readFile(AUTH_PATH);
 
     const iv = new Uint8Array(raw.slice(0, 12));
     const ciphertext = raw.slice(12);
