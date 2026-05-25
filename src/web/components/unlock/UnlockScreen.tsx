@@ -12,7 +12,7 @@ import { PasswordForm } from './PasswordForm';
 import { WebAuthnPrompt } from './WebAuthnPrompt';
 import { AuthCard } from './AuthCard';
 import { LogoIcon } from '../ui/LogoIcon';
-import { isValidVault, verifyPermission } from '../../../core/storage/directory';
+import { isValidVault, verifyPermission, WebStorageProvider } from '../../../core/storage/web-provider';
 import { readPasswordHint } from '../../../core/storage/indexFile';
 import {
   getRecentFolders,
@@ -57,7 +57,7 @@ export function UnlockScreen() {
         } catch {
           setMode('unlock');
         }
-        readPasswordHint(handle).then(setPasswordHint);
+        readPasswordHint(new WebStorageProvider(handle)).then(setPasswordHint);
       } else {
         setMode('create');
         setPasswordHint(undefined);
@@ -144,11 +144,12 @@ export function UnlockScreen() {
       setLoading(true);
       setError(null);
       try {
+        const provider = new WebStorageProvider(folder);
         if (mode === 'create') {
-          await init(folder, password, hint);
+          await init(provider, folder.name, password, hint);
           await saveFolderToRecent(folder);
         } else {
-          const ok = await unlock(folder, password);
+          const ok = await unlock(provider, folder.name, password);
           if (ok) {
             await saveFolderToRecent(folder);
           } else {
@@ -178,7 +179,8 @@ export function UnlockScreen() {
     setLoading(true);
     setError(null);
     try {
-      const ok = await unlockWithWebAuthn(folder);
+      const provider = new WebStorageProvider(folder);
+      const ok = await unlockWithWebAuthn(provider, folder.name);
       if (ok) {
         await saveFolderToRecent(folder);
       } else {

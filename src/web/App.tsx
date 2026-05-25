@@ -6,7 +6,8 @@ import { UnlockScreen } from './components/unlock/UnlockScreen';
 import { LockScreen } from './components/unlock/LockScreen';
 import { VaultScreen } from './components/vault/VaultScreen';
 import { useVault } from '../core/context/VaultContext';
-import { verifyPermission } from '../core/storage/directory';
+import { verifyPermission } from '../core/storage/web-provider';
+import './App.css';
 import {
   getRecentFolders,
   getLastOpenedVault,

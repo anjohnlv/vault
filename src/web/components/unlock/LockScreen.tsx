@@ -3,6 +3,7 @@ import { useVault } from '../../../core/context/VaultContext';
 import { isPlatformAuthAvailable, hasWebAuthn } from '../../../core/auth/webauthn';
 import { clearLastOpenedVault } from '../../../core/storage/recentFolders';
 import { readPasswordHint } from '../../../core/storage/indexFile';
+import { WebStorageProvider } from '../../../core/storage/web-provider';
 import { AuthCard } from './AuthCard';
 import { PasswordForm } from './PasswordForm';
 
@@ -25,12 +26,14 @@ export function LockScreen({ vaultHandle, vaultName, onBack }: LockScreenProps) 
   }, []);
 
   useEffect(() => {
-    readPasswordHint(vaultHandle).then(setPasswordHint);
+    const provider = new WebStorageProvider(vaultHandle);
+    readPasswordHint(provider).then(setPasswordHint);
   }, [vaultHandle]);
 
   useEffect(() => {
     if (webauthnAvailable) {
-      hasWebAuthn(vaultHandle).then(setWebauthnRegistered);
+      const provider = new WebStorageProvider(vaultHandle);
+      hasWebAuthn(provider).then(setWebauthnRegistered);
     }
   }, [webauthnAvailable, vaultHandle]);
 
@@ -38,7 +41,8 @@ export function LockScreen({ vaultHandle, vaultName, onBack }: LockScreenProps) 
     setLoading(true);
     setError(null);
     try {
-      const ok = await unlock(vaultHandle, password);
+      const provider = new WebStorageProvider(vaultHandle);
+      const ok = await unlock(provider, vaultName, password);
       if (!ok) {
         setError('密码错误');
       }
@@ -47,13 +51,14 @@ export function LockScreen({ vaultHandle, vaultName, onBack }: LockScreenProps) 
     } finally {
       setLoading(false);
     }
-  }, [vaultHandle, unlock]);
+  }, [vaultHandle, vaultName, unlock]);
 
   const handleWebAuthn = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const ok = await unlockWithWebAuthn(vaultHandle);
+      const provider = new WebStorageProvider(vaultHandle);
+      const ok = await unlockWithWebAuthn(provider, vaultName);
       if (!ok) {
         setError('验证失败');
       }
@@ -62,7 +67,7 @@ export function LockScreen({ vaultHandle, vaultName, onBack }: LockScreenProps) 
     } finally {
       setLoading(false);
     }
-  }, [vaultHandle, unlockWithWebAuthn]);
+  }, [vaultHandle, vaultName, unlockWithWebAuthn]);
 
   const handleBack = useCallback(() => {
     clearLastOpenedVault();
