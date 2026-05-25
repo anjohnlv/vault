@@ -1,0 +1,303 @@
+/* ===== Shared Component Styles ===== */
+/* 这些样式被 shared/components/ 目录下的组件使用 */
+/* 由各入口文件 (web/main.tsx, mobile/...) 导入 */
+
+/* Search Bar */
+.search-bar { padding: var(--space-3); display: flex; flex-direction: column; gap: 6px; }
+.search-bar__tabs { display: flex; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--color-border); }
+.search-bar__tab {
+  flex: 1; padding: 3px 0; font-size: var(--text-xs); border: none; cursor: pointer;
+  background: transparent; color: var(--color-text-muted); transition: all 0.15s;
+}
+.search-bar__tab--active { background: var(--color-accent); color: #fff; }
+.search-bar__input {
+  width: 100%; padding: var(--space-1) var(--space-2);
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+.search-bar__input:focus { outline: none; border-color: var(--color-accent); }
+
+/* Password Book */
+.password-book {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.password-book__header {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+.password-book__badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 3px var(--space-2);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border-radius: var(--radius-sm);
+  line-height: 1.4;
+  letter-spacing: 0.3px;
+}
+.password-book__badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+.password-book__header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.password-book__search {
+  width: 240px;
+  min-width: 0;
+}
+.password-book__empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--space-8);
+}
+.password-book__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Entry Card — base */
+.pw-entry-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  transition: border-color var(--duration-fast),
+              box-shadow var(--duration-fast);
+}
+.pw-entry-card:hover {
+  border-color: var(--color-border-hover, var(--color-text-muted));
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+.pw-entry-card--editing {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* Entry Card — collapsed (view mode) */
+.pw-entry-card--collapsed {
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  border-left: 3px solid transparent;
+  transition: border-color var(--duration-fast),
+              box-shadow var(--duration-fast);
+}
+.pw-entry-card--collapsed:hover {
+  border-left-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+.pw-entry-card__collapsed-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+.pw-entry-card__collapsed-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 80px;
+}
+.pw-entry-card__collapsed-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+.pw-entry-card__collapsed-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  padding: 3px var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast), color var(--duration-fast);
+  overflow: hidden;
+  max-width: 160px;
+  flex-shrink: 0;
+}
+.pw-entry-card__collapsed-field:hover {
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+}
+.pw-entry-card__collapsed-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-entry-card__collapsed-text--password {
+  font-family: monospace;
+  letter-spacing: 1px;
+}
+.pw-entry-card__collapsed-copy {
+  font-size: 11px;
+  opacity: 0.4;
+  flex-shrink: 0;
+  transition: opacity var(--duration-fast), color var(--duration-fast);
+}
+.pw-entry-card__collapsed-field:hover .pw-entry-card__collapsed-copy {
+  opacity: 1;
+}
+.pw-entry-card__collapsed-copy--done {
+  color: var(--color-accent) !important;
+  opacity: 1 !important;
+}
+
+/* Entry Card — expanded (view mode) */
+.pw-entry-card--expanded {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pw-entry-card__expanded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  user-select: none;
+}
+.pw-entry-card__expanded-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-entry-card__collapse-icon {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  margin-left: var(--space-2);
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+.pw-entry-card__collapse-icon--up {
+  transform: rotate(180deg);
+}
+.pw-entry-card__expanded-notes {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  padding: 0;
+  margin: calc(var(--space-1) * -1) 0 0;
+}
+.pw-entry-card__expanded-divider {
+  height: 1px;
+  background: var(--color-border);
+  opacity: 0.3;
+}
+.pw-entry-card__expanded-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  font-size: var(--text-xs);
+}
+.pw-entry-card__expanded-label {
+  color: var(--color-text-muted);
+  min-width: 48px;
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+}
+.pw-entry-card__expanded-value {
+  color: var(--color-text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+.pw-entry-card__expanded-value--password {
+  font-family: monospace;
+  letter-spacing: 1px;
+}
+.pw-entry-card__expanded-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast), background var(--duration-fast);
+  flex-shrink: 0;
+}
+.pw-entry-card__expanded-copy-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-raised);
+}
+.pw-entry-card__expanded-copy-btn--done {
+  color: var(--color-accent) !important;
+}
+.pw-entry-card__expanded-actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space-1);
+}
+.pw-entry-card__visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast), background var(--duration-fast);
+  flex-shrink: 0;
+}
+.pw-entry-card__visibility-toggle:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-raised);
+}
+
+/* Edit mode fields */
+.pw-entry-card__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pw-entry-card--editing .pw-entry-card__actions {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  margin-top: var(--space-1);
+}
